@@ -1,0 +1,2734 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>單字探險家 - 國中生英文單字互動學習網</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 100%);
+            min-height: 100vh;
+        }
+        .fancy-font {
+            font-family: 'Fredoka One', 'Noto Sans TC', sans-serif;
+        }
+        
+        /* 3D 翻牌專用樣式 */
+        .perspective {
+            perspective: 1000px;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .card-inner.flipped {
+            transform: rotateY(180deg);
+        }
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        /* 正面：秀出中英文內容，預設為翻轉狀態 */
+        .card-front {
+            background-color: white;
+            color: #1e293b;
+            transform: rotateY(180deg);
+            border: 2px solid #e0f2fe;
+        }
+        /* 背面：未翻牌時的彩色花樣 */
+        .card-back {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border: 2px solid #e0f2fe;
+        }
+
+        /* 麥克風錄音動態波形 */
+        .recording-pulse {
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 12px rgba(239, 68, 68, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- ==================== AUTH GATEWAY SECTION ==================== -->
+    <section id="auth-container" class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-2xl border border-sky-100">
+            <div class="text-center">
+                <div class="mx-auto h-16 w-16 bg-gradient-to-tr from-sky-400 to-indigo-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-sky-100">
+                    <i class="fa-solid fa-graduation-cap text-3xl"></i>
+                </div>
+                <h2 class="mt-6 text-3xl font-black fancy-font bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">Vocab Explorer</h2>
+                <p class="mt-2 text-sm text-slate-400 font-medium">歡迎來到國中生英文單字探險家</p>
+            </div>
+
+            <!-- 切換表單 Tabs -->
+            <div class="flex bg-slate-100 p-1 rounded-xl">
+                <button onclick="switchAuthTab('student-login')" id="tab-student-login" class="flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-slate-800 shadow-sm transition-all">學生登入</button>
+                <button onclick="switchAuthTab('student-register')" id="tab-student-register" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all">註冊帳號</button>
+                <button onclick="switchAuthTab('admin-login')" id="tab-admin-login" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition-all">管理者登入</button>
+            </div>
+
+            <!-- 學生登入 Form -->
+            <form id="form-student-login" onsubmit="handleAuth(event, 'student-login')" class="space-y-4 block">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">學生帳號</label>
+                    <input type="text" id="stu-login-user" required placeholder="請輸入帳號" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">密碼</label>
+                    <input type="password" id="stu-login-pass" required placeholder="請輸入密碼" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white transition-all">
+                </div>
+                <button type="submit" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-sky-100 transition-all mt-6">
+                    確認登入探索 <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+                <p class="text-center text-[11px] text-slate-400 mt-2">若尚未建立帳號，請先切到「註冊帳號」。</p>
+            </form>
+
+            <!-- 學生註冊 Form -->
+            <form id="form-student-register" onsubmit="handleAuth(event, 'student-register')" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">新學生帳號</label>
+                    <input type="text" id="stu-reg-user" required placeholder="請設定登入帳號" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">密碼</label>
+                    <input type="password" id="stu-reg-pass" required placeholder="請設定 4 位數以上密碼" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">確認密碼</label>
+                    <input type="password" id="stu-reg-pass-confirm" required placeholder="再次輸入密碼確認" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white transition-all">
+                </div>
+                <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-emerald-100 transition-all mt-6">
+                    註冊並直接登入 <i class="fa-solid fa-user-plus ml-1"></i>
+                </button>
+            </form>
+
+            <!-- 管理者登入 Form (已移除體驗帳密提示) -->
+            <form id="form-admin-login" onsubmit="handleAuth(event, 'admin-login')" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">管理者帳號</label>
+                    <input type="text" id="admin-login-user" required placeholder="管理員專用帳號" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">管理密碼</label>
+                    <input type="password" id="admin-login-pass" required placeholder="請輸入管理密碼" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-indigo-100 transition-all mt-6">
+                    進入管理系統 <i class="fa-solid fa-lock-open ml-1"></i>
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <!-- 全域提示訊息區：登入前與登入後都需要可見 -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[9999] transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900 text-white px-6 py-3.5 rounded-2xl shadow-xl flex items-center space-x-3 border border-slate-800 max-w-sm">
+            <span id="toast-icon" class="text-lg"></span>
+            <p id="toast-msg" class="text-sm font-medium"></p>
+        </div>
+    </div>
+
+    <!-- 共用練習完成彈窗 -->
+    <div id="game-over-modal" class="fixed inset-0 z-[9998] hidden opacity-0 bg-slate-900/45 backdrop-blur-sm transition-opacity duration-300 flex items-center justify-center px-4">
+        <div id="game-over-card" class="w-full max-w-sm bg-white rounded-3xl p-8 text-center shadow-2xl scale-90 transition-transform duration-300 border border-sky-100">
+            <div class="mx-auto w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mb-5 border border-emerald-100">
+                <i class="fa-solid fa-trophy text-3xl"></i>
+            </div>
+            <h3 id="game-over-title" class="text-2xl font-black text-slate-800 mb-2">恭喜完成！</h3>
+            <p class="text-slate-500 text-sm font-semibold mb-6">這次練習已經完成，系統會自動回到主頁面。</p>
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100">
+                    <span class="block text-[10px] font-bold text-sky-500 mb-1">獲得分數</span>
+                    <span id="modal-score" class="text-xl font-black text-sky-700">+0</span>
+                </div>
+                <div class="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+                    <span class="block text-[10px] font-bold text-emerald-500 mb-1">完成題數</span>
+                    <span id="modal-mastered" class="text-xl font-black text-emerald-700">+0</span>
+                </div>
+            </div>
+            <button onclick="closeGameOverModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-sm transition-all">
+                回到主頁面
+            </button>
+            <p class="text-[11px] text-slate-400 mt-3">約 2 秒後自動返回</p>
+        </div>
+    </div>
+
+    <!-- ==================== MAIN GAME PAGE (HIDDEN BY DEFAULT) ==================== -->
+    <div id="main-content" class="hidden">
+        <!-- 頂部導覽列 -->
+        <header class="bg-white/80 backdrop-blur-md border-b border-sky-100 sticky top-0 z-50 transition-all">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('dashboard')">
+                    <div class="bg-gradient-to-tr from-sky-400 to-indigo-500 text-white p-2.5 rounded-2xl shadow-md shadow-sky-200">
+                        <i class="fa-solid fa-graduation-cap text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold fancy-font bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">Vocab Explorer</h1>
+                        <p class="text-xs text-slate-400 font-medium">國中生單字冒險王</p>
+                    </div>
+                </div>
+                
+                <nav class="hidden md:flex space-x-1">
+                    <button onclick="switchTab('dashboard')" class="nav-btn px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-sky-50 transition-all flex items-center gap-2" id="nav-dashboard">
+                        <i class="fa-solid fa-house"></i> 首頁
+                    </button>
+                    <button onclick="switchTab('vocab-list')" class="nav-btn px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-sky-50 transition-all flex items-center gap-2" id="nav-vocab-list">
+                        <i class="fa-solid fa-book"></i> 單字庫
+                    </button>
+                    <!-- 僅管理者可見 -->
+                    <button onclick="switchTab('admin-panel')" class="nav-btn hidden px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all flex items-center gap-2" id="nav-admin-panel">
+                        <i class="fa-solid fa-gears"></i> 管理者模式
+                    </button>
+                </nav>
+
+                <div class="flex items-center space-x-3">
+                    <!-- 已掌握單字進度徽章 -->
+                    <div class="hidden sm:flex bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full text-xs font-bold items-center gap-1.5 border border-emerald-100">
+                        <i class="fa-solid fa-circle-check text-emerald-500"></i> 已掌握: <span id="mastered-count">0</span>
+                    </div>
+                    <div class="bg-sky-50 text-sky-700 px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border border-sky-100">
+                        <span id="user-role-tag" class="bg-sky-200 px-2 py-0.5 rounded text-[10px] text-sky-800">學生</span>
+                        <span id="header-username">Student</span>
+                    </div>
+                    <!-- 登出按鈕 -->
+                    <button onclick="logout()" class="text-slate-400 hover:text-slate-600 p-2 rounded-xl text-sm font-bold flex items-center gap-1 border border-slate-100 hover:bg-slate-50 transition-all" title="登出">
+                        <i class="fa-solid fa-right-from-bracket"></i> <span class="hidden sm:inline text-xs">登出</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-6xl mx-auto px-4 py-8">
+            
+            <!-- ==================== DASHBOARD SECTION ==================== -->
+            <section id="tab-dashboard" class="tab-content block">
+                <!-- 學生目前學習程度提示區 -->
+                <div class="bg-gradient-to-r from-sky-500 to-indigo-600 rounded-3xl p-6 md:p-8 text-white shadow-xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div class="space-y-2">
+                        <span class="bg-white/20 text-white text-xs font-extrabold px-3.5 py-1 rounded-full border border-white/20 uppercase tracking-wider">學習階段進度</span>
+                        <h2 class="text-2xl md:text-3xl font-extrabold">我的當前挑戰程度：<span id="dashboard-student-level" class="text-amber-300">B1 - L1</span></h2>
+                        <p class="text-white/80 text-xs md:text-sm">系統將優先挑選此冊別與課別中您未熟記的單字，並穿插歷史單字複習，助您達到完美長期記憶！</p>
+                    </div>
+                    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex gap-6 w-full md:w-auto justify-around">
+                        <div class="text-center">
+                            <span class="block text-2xl font-black text-amber-300" id="stat-total-tested">0</span>
+                            <span class="text-[10px] text-white/70 font-bold uppercase">已測次數</span>
+                        </div>
+                        <div class="text-center border-l border-white/10 pl-6">
+                            <span class="block text-2xl font-black text-emerald-300" id="stat-overall-rate">0%</span>
+                            <span class="text-[10px] text-white/70 font-bold uppercase">總答對率</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 五大遊戲卡片 -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mb-12">
+                    <!-- 遊戲一：聽音辨字 -->
+                    <div onclick="startListeningGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-sky-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                        <div class="bg-sky-100 text-sky-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
+                            <i class="fa-solid fa-volume-high text-xl"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">聽音辨字王</h3>
+                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">20題深度聽力。聽取清晰慢速發音，依照設定之學習程度，選出正確單字。</p>
+                        <span class="text-sky-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
+                            開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
+
+                    <!-- 遊戲二：字母拼拼樂 -->
+                    <div onclick="startSpellingGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-amber-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                        <div class="bg-amber-100 text-amber-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
+                            <i class="fa-solid fa-keyboard text-xl"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">字母拼拼樂</h3>
+                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">重組拼讀大考驗！依照當前學習進度，訓練單字拼寫與肌肉記憶。</p>
+                        <span class="text-amber-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
+                            開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
+
+                    <!-- 遊戲三：情境填空 -->
+                    <div onclick="startSentenceGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-emerald-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                        <div class="bg-emerald-100 text-emerald-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
+                            <i class="fa-solid fa-pen-nib text-xl"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">情境句子填空</h3>
+                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">20題語意理解。將單字放入會考生活例句中，奠定靈活運用能力。</p>
+                        <span class="text-emerald-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
+                            開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
+
+                    <!-- 遊戲四：連連看 -->
+                    <div onclick="startMatchingGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                        <div class="bg-indigo-100 text-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
+                            <i class="fa-solid fa-puzzle-piece text-xl"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">翻牌連連看</h3>
+                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">趣味翻牌，中英連線。點擊卡牌後順暢翻轉並清晰顯示單字內容。</p>
+                        <span class="text-indigo-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
+                            開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
+
+                    <!-- 遊戲五：AI口說發音王 -->
+                    <div onclick="startPronunciationGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-rose-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                        <div class="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
+                            <i class="fa-solid fa-microphone text-xl"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">AI口說發音王</h3>
+                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">大聲說出英文！利用瀏覽器AI語音辨識，精準評測並校正你的單字發音。</p>
+                        <span class="text-rose-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
+                            開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 學生個人學習進度與單字答對率面板 -->
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm mb-12">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-6">
+                        <div>
+                            <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-line text-indigo-500"></i> 我的個人單字學習答對率
+                            </h3>
+                            <p class="text-slate-400 text-xs">即時呈現您挑戰過的單字答對記錄與複習免測狀態</p>
+                        </div>
+                        <div class="flex gap-2 text-xs">
+                            <span class="bg-emerald-50 text-emerald-700 px-2 py-1 rounded font-bold border border-emerald-100">熟記(累積答對8次免測)</span>
+                            <span class="bg-blue-50 text-blue-700 px-2 py-1 rounded font-bold border border-blue-100">熟悉(累積答對5次少出現)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto border border-slate-100 rounded-2xl">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 text-xs font-bold">
+                                    <th class="py-3 px-4">單字 / 冊課別</th>
+                                    <th class="py-3 px-4">中文解釋</th>
+                                    <th class="py-3 px-4 text-center">測試總次數</th>
+                                    <th class="py-3 px-4 text-center">答對次數 / 累積熟記</th>
+                                    <th class="py-3 px-4 text-center">個別單字答對率</th>
+                                    <th class="py-3 px-4 text-center">學習狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-progress-table-body" class="divide-y divide-slate-50 text-xs">
+                                <!-- 動態渲染學生的答對率列表 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 熱門單字快速預覽 -->
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-800">今日推薦複習字卡</h3>
+                            <p class="text-slate-400 text-xs">隨機挑選今日精選必背單字</p>
+                        </div>
+                        <button onclick="renderQuickCards()" class="text-sky-500 hover:text-sky-600 text-sm font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-rotate"></i> 換一組
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="quick-cards-container">
+                        <!-- 動態生成 -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== VOCAB LIST SECTION ==================== -->
+            <section id="tab-vocab-list" class="tab-content hidden">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                        <div>
+                            <h2 class="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+                                <i class="fa-solid fa-book text-sky-500"></i> 當前挑戰單字庫
+                            </h2>
+                            <p class="text-slate-400 text-xs mt-1">目前共有 <span id="total-words-badge" class="font-bold text-sky-600">0</span> 個單字，包含系統預設與管理者每日新增字卡。</p>
+                        </div>
+                        <div class="w-full md:w-auto relative">
+                            <input type="text" id="vocab-search" oninput="searchVocabulary()" placeholder="搜尋英文單字或中文..." class="w-full md:w-80 pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white transition-all">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                        </div>
+                    </div>
+
+                    <!-- 單字表格與字卡切換 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" id="vocab-grid">
+                        <!-- 動態渲染單字卡 -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== ADMIN PANEL SECTION ==================== -->
+            <section id="tab-admin-panel" class="tab-content hidden">
+                <!-- 管理者主頁分頁選單 -->
+                <div class="flex border-b border-slate-200 mb-6 gap-6">
+                    <button id="admin-tab-vocab" onclick="switchAdminSubTab('vocab')" class="pb-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all">
+                        <i class="fa-solid fa-folder-open mr-1"></i> 單字內容維護
+                    </button>
+                    <button id="admin-tab-accounts" onclick="switchAdminSubTab('accounts')" class="pb-3 text-sm font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition-all">
+                        <i class="fa-solid fa-users-gear mr-1"></i> 學生程度與帳號管理
+                    </button>
+                </div>
+
+                <!-- 子分頁1：單字內容維護 -->
+                <div id="admin-sub-vocab-box" class="block">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- 左側：新增與編輯表單 -->
+                        <div class="lg:col-span-1 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm h-fit">
+                            <h3 class="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
+                                <i class="fa-solid fa-plus-circle text-indigo-500"></i> 每日新增與編輯單字
+                            </h3>
+                            <p class="text-slate-400 text-xs mb-6">為學生補充最新單字與例句關卡。</p>
+
+                            <form id="vocab-form" onsubmit="saveVocabulary(event)" class="space-y-4">
+                                <input type="hidden" id="edit-index" value="">
+                                
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">英文單字 / 片語 <span class="text-rose-500">*</span></label>
+                                    <input type="text" id="form-word" required placeholder="例如：on time" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">中文翻譯 <span class="text-rose-500">*</span></label>
+                                    <input type="text" id="form-translation" required placeholder="例如：準時" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                </div>
+
+                                <!-- 冊別與課別下拉選單 -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-500 mb-1.5">學冊別 <span class="text-rose-500">*</span></label>
+                                        <select id="form-book" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                            <option value="B1">B1 (第一冊)</option>
+                                            <option value="B2">B2 (第二冊)</option>
+                                            <option value="B3">B3 (第三冊)</option>
+                                            <option value="B4">B4 (第四冊)</option>
+                                            <option value="B5">B5 (第五冊)</option>
+                                            <option value="B6">B6 (第六冊)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-500 mb-1.5">學課別 <span class="text-rose-500">*</span></label>
+                                        <select id="form-lesson" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                            <option value="L1">L1 (第一課)</option>
+                                            <option value="L2">L2 (第二課)</option>
+                                            <option value="L3">L3 (第三課)</option>
+                                            <option value="L4">L4 (第四課)</option>
+                                            <option value="L5">L5 (第五課)</option>
+                                            <option value="L6">L6 (第六課)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">生活化英文例句 <span class="text-rose-500">*</span></label>
+                                    <textarea id="form-sentence" required rows="3" placeholder="請將單字融入例句中，例如：Please arrive at the classroom on time." class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"></textarea>
+                                    <p class="text-[10px] text-amber-500 mt-1 font-medium"><i class="fa-solid fa-circle-info"></i> 例句中必須精確包含欲學習的英文單字（大小寫不限）。</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">例句中文翻譯 <span class="text-rose-500">*</span></label>
+                                    <input type="text" id="form-sentence-translation" required placeholder="例如：請準時到達教室。" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                </div>
+
+                                <div class="pt-2 flex gap-3">
+                                    <button type="submit" id="form-submit-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md shadow-indigo-100 transition-all">
+                                        <i class="fa-solid fa-floppy-disk mr-1"></i> 儲存單字卡
+                                    </button>
+                                    <button type="button" onclick="resetAdminForm()" class="bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold py-2.5 px-4 rounded-xl text-xs transition-all">
+                                        取消
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- 右側：現有單字總覽列表 -->
+                        <div class="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
+                            <div class="flex justify-between items-center mb-6">
+                                <div>
+                                    <h3 class="font-extrabold text-lg text-slate-800">單字庫管理清單</h3>
+                                    <p class="text-slate-400 text-xs">可以快速編輯現有教材、刪除或初始化預設單字</p>
+                                </div>
+                                <button onclick="restoreDefaultVocab()" class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg border border-amber-200 transition-all">
+                                    <i class="fa-solid fa-arrows-rotate mr-1"></i> 還原成預設10單字
+                                </button>
+                            </div>
+
+                            <div class="overflow-x-auto border border-slate-100 rounded-2xl flex-1">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 text-xs font-bold">
+                                            <th class="py-3 px-4">英文單字</th>
+                                            <th class="py-3 px-4">冊別/課別</th>
+                                            <th class="py-3 px-4">中文解釋</th>
+                                            <th class="py-3 px-4">關卡句子與翻譯</th>
+                                            <th class="py-3 px-4 text-center">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-table-body" class="divide-y divide-slate-50 text-xs">
+                                        <!-- 動態渲染 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 子分頁2：管理者帳號與學生程度設定區 -->
+                <div id="admin-sub-accounts-box" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- 左側：新增管理者表單 -->
+                        <div class="lg:col-span-1 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm h-fit">
+                            <h3 class="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
+                                <i class="fa-solid fa-user-shield text-indigo-500"></i> 建立新管理者帳號
+                            </h3>
+                            <p class="text-slate-400 text-xs mb-6">可新增其他教師 or 助教為共同管理者。</p>
+
+                            <form id="admin-account-form" onsubmit="createNewAdmin(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">管理員登入帳號 <span class="text-rose-500">*</span></label>
+                                    <input type="text" id="new-admin-user" required placeholder="例如：teacher_lee" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">登入密碼 <span class="text-rose-500">*</span></label>
+                                    <input type="password" id="new-admin-pass" required placeholder="請設定 6 位數以上密碼" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                </div>
+                                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md shadow-indigo-100 transition-all pt-2.5">
+                                    <i class="fa-solid fa-user-plus mr-1"></i> 新增管理者
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- 右側：現有管理員與學生程度設定列表 -->
+                        <div class="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
+                            <h3 class="font-extrabold text-lg text-slate-800 mb-1">系統使用者程度與權限列表</h3>
+                            <p class="text-slate-400 text-xs mb-6">可設定學生當前的學習階段程度（B1~B6，L1~L6）。學生測驗時會以此進行篩選與複習。</p>
+
+                            <div class="overflow-x-auto border border-slate-100 rounded-2xl">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 text-xs font-bold">
+                                            <th class="py-3 px-4">使用者帳號</th>
+                                            <th class="py-3 px-4">身分權限</th>
+                                            <th class="py-3 px-4">設定學習程度 (冊別 / 課別)</th>
+                                            <th class="py-3 px-4 text-center">刪除帳戶</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-accounts-table-body" class="divide-y divide-slate-50 text-xs">
+                                        <!-- 動態渲染 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== GAME WINDOWS ==================== -->
+            <!-- 1. 聽音辨字王 遊戲視窗 -->
+            <section id="game-listening" class="tab-content hidden max-w-2xl mx-auto">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xl relative">
+                    <!-- 遊戲標頭 -->
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+                        <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1 font-bold">
+                            <i class="fa-solid fa-chevron-left"></i> 離開
+                        </button>
+                        <div class="text-slate-500 text-xs font-bold">
+                            進度: <span id="listen-current-index" class="text-sky-600">1</span>/<span id="listen-total-count">20</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
+                            <i class="fa-solid fa-crown text-amber-400"></i> 得分: <span id="listen-score">0</span>
+                        </div>
+                    </div>
+
+                    <!-- 遊戲主體 -->
+                    <div class="text-center py-6">
+                        <p class="text-slate-400 text-xs font-semibold tracking-wider uppercase mb-2">LISTEN TO THE AUDIO (SLOWER & CLEARER)</p>
+                        <button onclick="playTargetWordSound()" class="w-24 h-24 bg-sky-50 text-sky-500 rounded-full hover:scale-110 active:scale-95 flex items-center justify-center mx-auto shadow-lg shadow-sky-50 transition-all border-4 border-white outline outline-4 outline-sky-100 hover:outline-sky-200">
+                            <i class="fa-solid fa-volume-high text-4xl animate-pulse"></i>
+                        </button>
+                        <p class="text-slate-400 text-xs mt-3 cursor-pointer hover:text-slate-600" onclick="playTargetWordSound()">點擊按鈕重聽超清晰慢速發音 (0.63x)</p>
+                    </div>
+
+                    <!-- 答題選項區 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8" id="listen-options-grid">
+                        <!-- 4個單字按鈕 -->
+                    </div>
+
+                    <!-- 正確/錯誤結果反饋區 -->
+                    <div id="listen-feedback" class="mt-8 text-center hidden">
+                        <div class="p-4 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold">
+                            <span id="listen-feedback-icon" class="text-lg"></span>
+                            <span id="listen-feedback-text"></span>
+                        </div>
+                        <button onclick="nextListeningQuestion()" class="mt-4 block mx-auto bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all">
+                            下一題 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. 字母拼拼樂 遊戲視窗 -->
+            <section id="game-spelling" class="tab-content hidden max-w-2xl mx-auto">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xl">
+                    <!-- 遊戲標頭 -->
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+                        <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1 font-bold">
+                            <i class="fa-solid fa-chevron-left"></i> 離開
+                        </button>
+                        <div class="text-slate-500 text-xs font-bold">
+                            進度: <span id="spell-current-index" class="text-amber-600">1</span>/<span id="spell-total-count">20</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
+                            <i class="fa-solid fa-fire text-orange-500"></i> 連擊: <span id="spell-combo">0</span>
+                        </div>
+                    </div>
+
+                    <!-- 提示區 -->
+                    <div class="text-center mb-8">
+                        <div class="bg-amber-50 inline-block px-4 py-1.5 rounded-full text-amber-800 text-xs font-bold mb-3">
+                            中文提示：<span id="spell-translation-hint">作業</span>
+                        </div>
+                        <div class="flex justify-center items-center gap-2 mb-4">
+                            <button onclick="playSpellingSound()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-lg text-xs flex items-center gap-1.5 transition-all">
+                                <i class="fa-solid fa-volume-high"></i> 播放發音
+                            </button>
+                        </div>
+                        
+                        <!-- 英文單字拼寫展示空格 -->
+                        <div class="flex flex-wrap justify-center gap-2 py-4" id="spell-slots-container">
+                            <!-- 填空槽 -->
+                        </div>
+                    </div>
+
+                    <!-- 字母拼音泡泡 -->
+                    <div class="bg-slate-50 rounded-2xl p-4 md:p-6 mb-6">
+                        <p class="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3">點擊以下字母組裝單字</p>
+                        <div class="flex flex-wrap justify-center gap-3" id="spell-bubbles-container">
+                            <!-- 打亂的字母氣泡 -->
+                        </div>
+                    </div>
+
+                    <!-- 拼字控制按鈕 -->
+                    <div class="flex justify-center gap-4">
+                        <button onclick="clearSpellingInput()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2 px-4 rounded-xl text-xs transition-all">
+                            <i class="fa-solid fa-trash-can mr-1"></i> 全部清除
+                        </button>
+                        <button onclick="checkSpellingAnswer()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-md shadow-amber-100 transition-all">
+                            <i class="fa-solid fa-circle-check mr-1"></i> 送出答案
+                        </button>
+                    </div>
+
+                    <!-- 回饋與下一題 -->
+                    <div id="spell-feedback" class="mt-8 text-center hidden">
+                        <div class="p-4 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold">
+                            <span id="spell-feedback-icon" class="text-lg"></span>
+                            <span id="spell-feedback-text"></span>
+                        </div>
+                        <button onclick="nextSpellingQuestion()" class="mt-4 block mx-auto bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all">
+                            下一題 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 情境句子填空 遊戲視窗 -->
+            <section id="game-sentence" class="tab-content hidden max-w-2xl mx-auto">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xl">
+                    <!-- 遊戲標頭 -->
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+                        <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1 font-bold">
+                            <i class="fa-solid fa-chevron-left"></i> 離開
+                        </button>
+                        <div class="text-slate-500 text-xs font-bold">
+                            進度: <span id="sentence-current-index" class="text-emerald-600">1</span>/<span id="sentence-total-count">20</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-500">
+                            <i class="fa-solid fa-star text-emerald-400"></i> 得分: <span id="sentence-score">0</span>
+                        </div>
+                    </div>
+
+                    <!-- 句子題目 -->
+                    <div class="bg-emerald-50/50 rounded-2xl p-6 border border-emerald-100 mb-8 relative">
+                        <span class="absolute -top-3 left-4 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded">FILL IN THE BLANK</span>
+                        <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">請選擇最符合句子語境的單字：</p>
+                        <h3 class="text-lg md:text-xl font-bold text-slate-800 leading-relaxed" id="sentence-question-text">
+                            <!-- e.g., Remember to do your ______ before watching TV. -->
+                        </h3>
+                        
+                        <!-- 提示按鈕與中文句意 -->
+                        <div class="mt-4 pt-4 border-t border-emerald-100/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <button id="sentence-hint-btn" onclick="toggleSentenceHint()" class="text-xs text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-1">
+                                <i class="fa-regular fa-lightbulb"></i> 顯示翻譯提示
+                            </button>
+                            <p id="sentence-translation-hint-box" class="text-xs text-slate-500 hidden"></p>
+                        </div>
+                    </div>
+
+                    <!-- 答題選項區 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="sentence-options-grid">
+                        <!-- 4個單字按鈕 -->
+                    </div>
+
+                    <!-- 回饋區 -->
+                    <div id="sentence-feedback" class="mt-8 text-center hidden">
+                        <div class="p-4 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold">
+                            <span id="sentence-feedback-icon" class="text-lg"></span>
+                            <span id="sentence-feedback-text"></span>
+                        </div>
+                        <button onclick="nextSentenceQuestion()" class="mt-4 block mx-auto bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all">
+                            下一題 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 翻牌連連看 遊戲視窗 -->
+            <section id="game-matching" class="tab-content hidden">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xl max-w-4xl mx-auto">
+                    <!-- 遊戲標頭 -->
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+                        <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1 font-bold">
+                            <i class="fa-solid fa-chevron-left"></i> 離開
+                        </button>
+                        <div>
+                            <span class="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
+                                已配對: <span id="match-pairs-count">0</span>/6 組
+                            </span>
+                        </div>
+                        <div class="text-xs font-bold text-slate-500">
+                            點擊次數: <span id="match-clicks" class="text-indigo-600">0</span>
+                        </div>
+                    </div>
+
+                    <!-- 翻牌遊戲板 -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" id="matching-grid">
+                        <!-- 動態生成 12 張牌 (6組) -->
+                    </div>
+
+                    <!-- 遊戲完成結算 -->
+                    <div id="match-complete-panel" class="hidden text-center mt-10 p-6 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                        <h4 class="font-extrabold text-xl text-indigo-800 mb-1"><i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i> 太棒了！挑戰完成</h4>
+                        <p class="text-slate-600 text-xs mb-4">你在 <span id="match-final-clicks" class="font-bold text-indigo-600">0</span> 次配對嘗試中完成了所有字卡對決！</p>
+                        <button onclick="startMatchingGame()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all shadow-md shadow-indigo-100">
+                            再玩一次
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. AI口說發音王 遊戲視窗 -->
+            <section id="game-pronunciation" class="tab-content hidden max-w-2xl mx-auto">
+                <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xl relative">
+                    <!-- 遊戲標頭 -->
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-100">
+                        <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1 font-bold">
+                            <i class="fa-solid fa-chevron-left"></i> 離開
+                        </button>
+                        <div class="text-slate-500 text-xs font-bold">
+                            進度: <span id="pronounce-current-index" class="text-rose-600">1</span>/<span id="pronounce-total-count">20</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs font-bold text-rose-500">
+                            <i class="fa-solid fa-microphone text-rose-500"></i> 得分: <span id="pronounce-score">0</span>
+                        </div>
+                    </div>
+
+                    <!-- 語音辨識不支援警告 -->
+                    <div id="pronounce-unsupported-warning" class="hidden mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-2xl flex items-start gap-2">
+                        <i class="fa-solid fa-circle-info text-amber-500 text-sm mt-0.5"></i>
+                        <div>
+                            <p class="font-bold">您的瀏覽器可能不完全支援 AI 語音辨識功能！</p>
+                            <p class="mt-1">口說辨識功能目前在 <strong>Google Chrome</strong>、<strong>Microsoft Edge</strong>、與 <strong>Safari</strong> 瀏覽器上支援度最佳。若點擊無反應，請確認您已允許本網頁使用您的「麥克風」。</p>
+                        </div>
+                    </div>
+
+                    <!-- 遊戲主體 -->
+                    <div class="text-center py-6">
+                        <span id="pronounce-book-tag" class="bg-rose-50 text-rose-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-rose-100">B1-L1</span>
+                        <h3 class="text-3xl font-black text-slate-800 tracking-wide mt-4 mb-2" id="pronounce-target-word">apple</h3>
+                        <p class="text-slate-500 text-sm font-semibold mb-6" id="pronounce-target-translation">蘋果</p>
+
+                        <div class="flex justify-center gap-4 mb-8">
+                            <!-- 播放示範發音 -->
+                            <button onclick="playPronounceTargetSound()" class="w-12 h-12 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all active:scale-95" title="聽示範發音">
+                                <i class="fa-solid fa-volume-high text-lg"></i>
+                            </button>
+                            
+                            <!-- 語音辨識按鈕 -->
+                            <button id="pronounce-mic-btn" onclick="toggleSpeechRecognition()" class="w-20 h-20 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-100 transition-all active:scale-95 border-4 border-white outline outline-4 outline-rose-100 hover:outline-rose-200">
+                                <i class="fa-solid fa-microphone text-3xl" id="pronounce-mic-icon"></i>
+                            </button>
+
+                            <!-- 空白站位維持視覺平衡 -->
+                            <div class="w-12 h-12"></div>
+                        </div>
+
+                        <!-- 狀態提示語 -->
+                        <div class="h-10">
+                            <p id="pronounce-status-text" class="text-slate-400 text-xs font-semibold">點擊麥克風大聲唸出這個單字</p>
+                        </div>
+
+                        <!-- 錄製結果文字預覽 -->
+                        <div id="pronounce-transcript-box" class="mt-4 p-3 bg-slate-50 rounded-2xl inline-block max-w-xs border border-slate-100 hidden">
+                            <span class="text-[10px] text-slate-400 font-bold block mb-1">AI 偵測到您說：</span>
+                            <span id="pronounce-transcript-text" class="text-slate-800 font-black text-sm italic">...</span>
+                        </div>
+                    </div>
+
+                    <!-- 正確/錯誤結果反饋區 -->
+                    <div id="pronounce-feedback" class="mt-8 text-center hidden">
+                        <div class="p-4 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold">
+                            <span id="pronounce-feedback-icon" class="text-lg"></span>
+                            <span id="pronounce-feedback-text"></span>
+                        </div>
+                        <button onclick="nextPronunciationQuestion()" class="mt-4 block mx-auto bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-all">
+                            下一題 <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <footer class="border-t border-sky-100/60 py-8 bg-white/40 mt-16 text-center text-xs text-slate-400">
+            <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <p>© 2026 國中生英文單字探險家 Vocab Explorer. 適合國中會考、段考複習拼寫與發音訓練。</p>
+                <div class="flex space-x-4">
+                    <span class="cursor-pointer hover:text-slate-600" onclick="switchTab('vocab-list')"><i class="fa-solid fa-book-open"></i> 單字庫</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://bipvbfpviogptejqqkdk.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_PB0Tu8BWbOmHm3sbMmSDjQ_IqZRY5ij";
+        const db = window.supabase
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+            : null;
+        const usernameToEmail = username => `${username.toLowerCase().replace(/[^a-z0-9._-]/g, "_")}@vocab-explorer.app`;
+
+        // ==================== SYSTEM VOCABULARY INITIALIZATION ====================
+        // 更新預設 10 大單字並設定初級 B1 與 B2 的課別
+        const DEFAULT_VOCABULARY = [
+            { word: "senior high school", translation: "高中", sentence: "My older brother is studying at a senior high school.", sentenceTranslation: "我的哥哥正在一所高中就讀。", book: "B1", lesson: "L1" },
+            { word: "homework", translation: "作業", sentence: "Remember to do your homework before watching TV.", sentenceTranslation: "看電視之前記得要做作業。", book: "B1", lesson: "L1" },
+            { word: "on time", translation: "準時", sentence: "Please arrive at the classroom on time.", sentenceTranslation: "請準時到達教室。", book: "B1", lesson: "L2" },
+            { word: "swim", translation: "游泳", sentence: "I love to swim in the pool during summer days.", sentenceTranslation: "我喜歡在夏天時在游泳池裡游泳。", book: "B1", lesson: "L3" },
+            { word: "jump rope", translation: "跳繩", sentence: "She can jump rope very fast for five minutes.", sentenceTranslation: "她可以快速連續跳繩五分鐘。", book: "B1", lesson: "L3" },
+            { word: "ask", translation: "詢問", sentence: "If you have any questions, you can ask the teacher.", sentenceTranslation: "如果你有任何問題，你可以詢問老師。", book: "B1", lesson: "L4" },
+            { word: "question", translation: "問題", sentence: "The English exam has only one difficult question.", sentenceTranslation: "這場英文考試只有一個困難的問題。", book: "B1", lesson: "L4" },
+            { word: "tug of war", translation: "拔河", sentence: "We won the exciting tug of war game yesterday.", sentenceTranslation: "我們昨天贏了那場刺激的拔河比賽。", book: "B2", lesson: "L1" },
+            { word: "twice", translation: "兩次", sentence: "I wash my sneakers twice a month to keep them clean.", sentenceTranslation: "我每個月洗兩次運動鞋以保持乾淨。", book: "B2", lesson: "L2" },
+            { word: "once", translation: "一次；曾經", sentence: "I have been to New York once with my family.", sentenceTranslation: "我曾經和家人一起去過紐約一次。", book: "B2", lesson: "L2" }
+        ];
+
+        // 預設帳號資料庫：預設學生擁有初始學習難度 B1-L1
+        const DEFAULT_USERS = [
+            { username: "admin", password: "admin123", role: "admin" },
+            { username: "student", password: "student123", role: "student", levelBook: "B1", levelLesson: "L1" }
+        ];
+
+        let vocabulary = [...DEFAULT_VOCABULARY];
+        let masteredWords = new Set();
+        let users = [...DEFAULT_USERS];
+        let currentUser = null; // 當前登入的使用者資訊
+        
+        // 個人答對率與熟記進度儲存
+        // 格式：{ [username]: { [word]: { correctCount: 0, totalTested: 0, correctAnswers: 0 } } }
+        let studentProgress = {};
+
+        // ==================== Web Speech API 語音辨識變數 ====================
+        let speechRecognitionInstance = null;
+        let isSpeechRecognitionActive = false;
+
+        // 載入 localStorage
+        function mapProfile(row) {
+            return {
+                id: row.id,
+                username: row.username,
+                role: row.role,
+                levelBook: row.level_book || "B1",
+                levelLesson: row.level_lesson || "L1"
+            };
+        }
+
+        function mapVocabRow(row) {
+            return {
+                id: row.id,
+                word: row.word,
+                translation: row.translation,
+                sentence: row.sentence,
+                sentenceTranslation: row.sentence_translation,
+                book: row.book || "B1",
+                lesson: row.lesson || "L1"
+            };
+        }
+
+        async function loadSavedVocab() {
+            const { data, error } = await db
+                .from("vocabulary")
+                .select("*")
+                .order("book", { ascending: true })
+                .order("lesson", { ascending: true })
+                .order("word", { ascending: true });
+
+            if (error) {
+                console.error(error);
+                vocabulary = [...DEFAULT_VOCABULARY];
+                showToast("無法連線資料庫，暫時使用本機預設單字。", "error");
+            } else {
+                vocabulary = data.length ? data.map(mapVocabRow) : [...DEFAULT_VOCABULARY];
+            }
+
+            updateMasteredBadge();
+        }
+
+        async function loadProfiles() {
+            const { data, error } = await db
+                .from("profiles")
+                .select("*")
+                .order("created_at", { ascending: true });
+
+            if (error) {
+                console.error(error);
+                users = currentUser ? [currentUser] : [];
+                return;
+            }
+
+            users = data.map(mapProfile);
+            if (currentUser) {
+                const fresh = users.find(user => user.id === currentUser.id);
+                if (fresh) currentUser = fresh;
+            }
+        }
+
+        async function loadStudentState() {
+            if (!currentUser || currentUser.role !== "student") {
+                studentProgress = {};
+                masteredWords = new Set();
+                updateMasteredBadge();
+                return;
+            }
+
+            const username = currentUser.username;
+            studentProgress[username] = {};
+
+            const [{ data: progressRows, error: progressError }, { data: masteredRows, error: masteredError }] = await Promise.all([
+                db.from("student_progress").select("*").eq("user_id", currentUser.id),
+                db.from("mastered_words").select("word").eq("user_id", currentUser.id)
+            ]);
+
+            if (progressError) console.error(progressError);
+            if (masteredError) console.error(masteredError);
+
+            (progressRows || []).forEach(row => {
+                studentProgress[username][row.word] = {
+                    correctCount: row.correct_count || 0,
+                    totalTested: row.total_tested || 0,
+                    correctAnswers: row.correct_answers || 0
+                };
+            });
+
+            masteredWords = new Set((masteredRows || []).map(row => row.word));
+            updateMasteredBadge();
+        }
+
+        async function saveVocabToStorage() {
+            await loadSavedVocab();
+        }
+
+        async function saveMasteredToStorage() {
+            if (!currentUser) return;
+            const rows = [...masteredWords].map(word => ({ user_id: currentUser.id, word }));
+            if (rows.length) {
+                const { error } = await db.from("mastered_words").upsert(rows, { onConflict: "user_id,word" });
+                if (error) console.error(error);
+            }
+        }
+
+        async function saveUsersToStorage() {
+            await loadProfiles();
+        }
+
+        async function saveProgressToStorage() {
+            if (!currentUser || currentUser.role !== "student") return;
+            const progress = studentProgress[currentUser.username] || {};
+            const rows = Object.entries(progress).map(([word, prog]) => ({
+                user_id: currentUser.id,
+                word,
+                correct_count: prog.correctCount || 0,
+                total_tested: prog.totalTested || 0,
+                correct_answers: prog.correctAnswers || 0
+            }));
+
+            if (rows.length) {
+                const { error } = await db.from("student_progress").upsert(rows, { onConflict: "user_id,word" });
+                if (error) console.error(error);
+            }
+        }
+
+        // ==================== 智慧單字答對記錄與熟記系統 ====================
+        async function logAnswer(word, isCorrect) {
+            if (!currentUser || currentUser.role !== 'student') return;
+            const username = currentUser.username;
+            
+            if (!studentProgress[username]) {
+                studentProgress[username] = {};
+            }
+            if (!studentProgress[username][word]) {
+                studentProgress[username][word] = {
+                    correctCount: 0, // 累計答對次數 (用於判定 5 次減頻、8~10 次免測)
+                    totalTested: 0,
+                    correctAnswers: 0
+                };
+            }
+
+            const prog = studentProgress[username][word];
+            prog.totalTested++;
+            if (isCorrect) {
+                prog.correctAnswers++;
+                prog.correctCount++;
+                
+                // 自動更新系統 Mastering 緩存同步
+                if (prog.correctCount >= 8) {
+                    masteredWords.add(word);
+                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word }, { onConflict: "user_id,word" });
+                }
+            }
+            
+            await db.from("student_progress").upsert({
+                user_id: currentUser.id,
+                word,
+                correct_count: prog.correctCount,
+                total_tested: prog.totalTested,
+                correct_answers: prog.correctAnswers
+            }, { onConflict: "user_id,word" });
+            updateMasteredBadge();
+            renderStudentStats(); // 更新學生的答對率面板
+        }
+
+        // ==================== AUTH GATEWAY FUNCTIONS ====================
+        function switchAuthTab(tabType) {
+            document.querySelectorAll('#auth-container button').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
+                btn.classList.add('text-slate-500');
+            });
+            const currentTabBtn = document.getElementById(`tab-${tabType}`);
+            currentTabBtn.classList.remove('text-slate-500');
+            currentTabBtn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
+
+            document.getElementById('form-student-login').classList.add('hidden');
+            document.getElementById('form-student-register').classList.add('hidden');
+            document.getElementById('form-admin-login').classList.add('hidden');
+
+            document.getElementById(`form-${tabType}`).classList.remove('hidden');
+        }
+
+        async function handleAuth(event, type) {
+            event.preventDefault();
+            const submitBtn = event.submitter;
+            const originalBtnHtml = submitBtn?.innerHTML;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-70', 'cursor-wait');
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 處理中...';
+            }
+
+            if (!db) {
+                showToast('Supabase 套件沒有載入成功，請確認網路連線，或改用 Live Server/本機伺服器開啟頁面。', 'error');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-70', 'cursor-wait');
+                    submitBtn.innerHTML = originalBtnHtml;
+                }
+                return;
+            }
+
+            try {
+            if (type === 'student-login' || type === 'admin-login') {
+                const isAdminLogin = type === 'admin-login';
+                const usernameInput = isAdminLogin ? 'admin-login-user' : 'stu-login-user';
+                const passwordInput = isAdminLogin ? 'admin-login-pass' : 'stu-login-pass';
+                const expectedRole = isAdminLogin ? 'admin' : 'student';
+                const u = document.getElementById(usernameInput).value.trim();
+                const p = document.getElementById(passwordInput).value.trim();
+
+                const { data, error } = await db.auth.signInWithPassword({
+                    email: usernameToEmail(u),
+                    password: p
+                });
+
+                if (error || !data.user) {
+                    console.error(error);
+                    showToast(error?.message || '帳號或密碼錯誤，請再試一次。', 'error');
+                    return;
+                }
+
+                const { data: profile, error: profileError } = await db
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single();
+
+                if (profileError || !profile || profile.role !== expectedRole) {
+                    console.error(profileError);
+                    await db.auth.signOut();
+                    showToast(profileError ? '找不到帳號資料，請確認 supabase-schema.sql 已經在 Supabase 執行。' : (isAdminLogin ? '這個帳號不是管理員。' : '這個帳號不是學生帳號。'), 'error');
+                    return;
+                }
+
+                await loginSuccess(mapProfile(profile));
+                return;
+            }
+
+            if (type === 'student-register') {
+                const u = document.getElementById('stu-reg-user').value.trim();
+                const p = document.getElementById('stu-reg-pass').value.trim();
+                const pConfirm = document.getElementById('stu-reg-pass-confirm').value.trim();
+
+                if (p.length < 6) {
+                    showToast('密碼至少需要 6 個字元。', 'error');
+                    return;
+                }
+                if (p !== pConfirm) {
+                    showToast('兩次輸入的密碼不一致。', 'error');
+                    return;
+                }
+
+                const { data, error } = await db.auth.signUp({
+                    email: usernameToEmail(u),
+                    password: p,
+                    options: { data: { username: u, role: 'student' } }
+                });
+
+                if (error) {
+                    showToast(error.message.includes('already') ? '這個帳號已經被註冊。' : error.message, 'error');
+                    return;
+                }
+
+                if (!data.session) {
+                    showToast('註冊成功，但 Supabase 目前要求 Email 驗證。請到 Supabase 關閉 Confirm email，或先完成驗證後再登入。', 'info');
+                    return;
+                }
+
+                const newStudent = {
+                    id: data.user.id,
+                    username: u,
+                    role: 'student',
+                    levelBook: 'B1',
+                    levelLesson: 'L1'
+                };
+
+                showToast('註冊成功，已登入學生帳號。', 'success');
+                await loginSuccess(newStudent);
+                document.getElementById('stu-reg-user').value = '';
+                document.getElementById('stu-reg-pass').value = '';
+                document.getElementById('stu-reg-pass-confirm').value = '';
+            }
+            } catch (error) {
+                console.error(error);
+                showToast(`連線 Supabase 失敗：${error.message || error}`, 'error');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-70', 'cursor-wait');
+                    submitBtn.innerHTML = originalBtnHtml;
+                }
+            }
+        }
+
+        async function loginSuccess(user) {
+            currentUser = user;
+            await loadSavedVocab();
+            await loadProfiles();
+            await loadStudentState();
+
+            document.getElementById('auth-container').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+
+            document.getElementById('header-username').textContent = user.username;
+            const roleTag = document.getElementById('user-role-tag');
+            
+            const adminBtn = document.getElementById('nav-admin-panel');
+            if (user.role === 'admin') {
+                roleTag.textContent = "管理者";
+                roleTag.className = "bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
+                adminBtn.classList.remove('hidden');
+            } else {
+                roleTag.textContent = "學生";
+                roleTag.className = "bg-sky-100 text-sky-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
+                adminBtn.classList.add('hidden');
+            }
+
+            switchTab('dashboard');
+            showToast(`歡迎回來，${user.username}！`);
+        }
+
+        async function logout() {
+            currentUser = null;
+            await db.auth.signOut();
+            // 登出時順便停止可能正在運行的口說語音辨識
+            stopSpeechRecognitionGracefully();
+            document.getElementById('main-content').classList.add('hidden');
+            document.getElementById('auth-container').classList.remove('hidden');
+            document.getElementById('stu-login-user').value = '';
+            document.getElementById('stu-login-pass').value = '';
+            document.getElementById('admin-login-user').value = '';
+            document.getElementById('admin-login-pass').value = '';
+            switchAuthTab('student-login');
+            showToast("您已成功登出系統", "info");
+        }
+
+        // ==================== ADMIN SUB-TABS (ADMIN ONLY) ====================
+        function switchAdminSubTab(subTab) {
+            const vocabBox = document.getElementById('admin-sub-vocab-box');
+            const accountsBox = document.getElementById('admin-sub-accounts-box');
+            const tabVocabBtn = document.getElementById('admin-tab-vocab');
+            const tabAccountsBtn = document.getElementById('admin-tab-accounts');
+
+            if (subTab === 'vocab') {
+                vocabBox.classList.remove('hidden');
+                vocabBox.classList.add('block');
+                accountsBox.classList.add('hidden');
+                accountsBox.classList.remove('block');
+
+                tabVocabBtn.className = "pb-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all";
+                tabAccountsBtn.className = "pb-3 text-sm font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition-all";
+                renderAdminList();
+            } else {
+                vocabBox.classList.add('hidden');
+                vocabBox.classList.remove('block');
+                accountsBox.classList.remove('hidden');
+                accountsBox.classList.add('block');
+
+                tabVocabBtn.className = "pb-3 text-sm font-bold text-slate-400 hover:text-slate-600 border-b-2 border-transparent transition-all";
+                tabAccountsBtn.className = "pb-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all";
+                renderAdminAccountsList();
+            }
+        }
+
+        function createNewAdmin(event) {
+            event.preventDefault();
+            showToast("為了安全，管理員帳號請先註冊一般帳號，再到 Supabase SQL 執行：update public.profiles set role = 'admin' where username = '帳號';", "info");
+        }
+
+        // 渲染管理者對應帳戶的難度/程度調整列表
+        function renderAdminAccountsList() {
+            const tbody = document.getElementById('admin-accounts-table-body');
+            tbody.innerHTML = '';
+
+            users.forEach((user, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/50 transition-colors";
+                
+                const deleteBtnHtml = user.username === 'admin' 
+                    ? `<span class="text-slate-300 text-xs italic">系統核心（防鎖死）</span>`
+                    : `<button onclick="deleteAdminAccount('${user.username}')" class="text-rose-500 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"><i class="fa-solid fa-trash-can mr-1"></i> 刪除帳戶</button>`;
+
+                let levelConfigHtml = '';
+                if (user.role === 'student') {
+                    // 冊別選單
+                    let bookSelect = `<select onchange="updateStudentLevel('${user.username}', this.value, 'book')" class="bg-slate-50 border border-slate-200 rounded p-1 text-xs">`;
+                    for (let b = 1; b <= 6; b++) {
+                        const bVal = `B${b}`;
+                        const isSelected = (user.levelBook || "B1") === bVal ? "selected" : "";
+                        bookSelect += `<option value="${bVal}" ${isSelected}>第 ${b} 冊 (${bVal})</option>`;
+                    }
+                    bookSelect += `</select>`;
+
+                    // 課別選單
+                    let lessonSelect = `<select onchange="updateStudentLevel('${user.username}', this.value, 'lesson')" class="bg-slate-50 border border-slate-200 rounded p-1 text-xs ml-2">`;
+                    for (let l = 1; l <= 6; l++) {
+                        const lVal = `L${l}`;
+                        const isSelected = (user.levelLesson || "L1") === lVal ? "selected" : "";
+                        lessonSelect += `<option value="${lVal}" ${isSelected}>第 ${l} 課 (${lVal})</option>`;
+                    }
+                    lessonSelect += `</select>`;
+
+                    levelConfigHtml = `<div class="flex items-center">${bookSelect} ${lessonSelect}</div>`;
+                } else {
+                    levelConfigHtml = `<span class="text-slate-400 text-xs italic">不適用 (管理者權限)</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-slate-800">${user.username}</td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${user.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-sky-100 text-sky-800'}">
+                            ${user.role === 'admin' ? '管理權限' : '學生帳戶'}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4">${levelConfigHtml}</td>
+                    <td class="py-3 px-4 text-center">${deleteBtnHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 管理者動態更新學生冊別、課別程度
+        async function updateStudentLevel(username, value, type) {
+            const userIndex = users.findIndex(u => u.username === username);
+            if (userIndex !== -1) {
+                if (type === 'book') {
+                    users[userIndex].levelBook = value;
+                } else if (type === 'lesson') {
+                    users[userIndex].levelLesson = value;
+                }
+                const payload = {
+                    level_book: users[userIndex].levelBook || "B1",
+                    level_lesson: users[userIndex].levelLesson || "L1"
+                };
+                const { error } = await db.from("profiles").update(payload).eq("id", users[userIndex].id);
+                if (error) {
+                    console.error(error);
+                    showToast("更新學生程度失敗，請確認目前帳號有管理員權限。", "error");
+                    return;
+                }
+                await saveUsersToStorage();
+                showToast(`已成功調整學生 "${username}" 的學習進度為 ${users[userIndex].levelBook || "B1"}-${users[userIndex].levelLesson || "L1"}`);
+                
+                // 如果目前剛好在調整目前登入中的學生
+                if (currentUser && currentUser.username === username) {
+                    currentUser = users[userIndex];
+                }
+            }
+        }
+
+        function deleteAdminAccount(username) {
+            showToast("刪除 Auth 帳號需要 Supabase 後台或 Edge Function。請先在 Supabase Dashboard 的 Authentication 刪除使用者。", "info");
+        }
+
+
+        // ==================== APP ROUTING / TAB SWITCHER ====================
+        function switchTab(tabId) {
+            // 切換分頁時，關閉可能開啟中的麥克風錄音
+            stopSpeechRecognitionGracefully();
+
+            if (tabId === 'admin-panel' && (!currentUser || currentUser.role !== 'admin')) {
+                showToast("權限不足！只有管理者可以進入此模式。", "error");
+                switchTab('dashboard');
+                return;
+            }
+
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.add('hidden');
+                el.classList.remove('block');
+            });
+            
+            const activeTab = document.getElementById(`tab-${tabId}`);
+            if (activeTab) {
+                activeTab.classList.remove('hidden');
+                activeTab.classList.add('block');
+            } else {
+                const gameTab = document.getElementById(tabId);
+                if (gameTab) {
+                    gameTab.classList.remove('hidden');
+                    gameTab.classList.add('block');
+                }
+            }
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-sky-50', 'text-sky-600', 'bg-indigo-50', 'text-indigo-600');
+                btn.classList.add('text-slate-600');
+            });
+
+            const currentNav = document.getElementById(`nav-${tabId}`);
+            if (currentNav) {
+                currentNav.classList.remove('text-slate-600');
+                if (tabId === 'admin-panel') {
+                    currentNav.classList.add('bg-indigo-50', 'text-indigo-600');
+                } else {
+                    currentNav.classList.add('bg-sky-50', 'text-sky-600');
+                }
+            }
+
+            if (tabId === 'vocab-list') {
+                renderVocabList();
+            } else if (tabId === 'admin-panel') {
+                switchAdminSubTab('vocab');
+            } else if (tabId === 'dashboard') {
+                renderQuickCards();
+                renderStudentStats();
+            }
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ==================== TOAST NOTIFICATION (CUSTOM ALERT) ====================
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const msg = document.getElementById('toast-msg');
+
+            msg.textContent = message;
+            if (type === 'success') {
+                icon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+            } else if (type === 'error') {
+                icon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
+            } else {
+                icon.innerHTML = '<i class="fa-solid fa-lightbulb text-amber-500"></i>';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 2500);
+        }
+
+        // ==================== TTS SPEECH FUNCTION ====================
+        function speak(text) {
+            if (!('speechSynthesis' in window)) {
+                showToast("此瀏覽器不支援發音功能", "error");
+                return;
+            }
+            window.speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.63; 
+            utterance.pitch = 1.0; 
+            
+            const voices = window.speechSynthesis.getVoices();
+            const usVoice = voices.find(v => v.lang.includes('en-US') || v.lang.includes('en_US'));
+            if (usVoice) utterance.voice = usVoice;
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = function() {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
+        // ==================== DASHBOARD & QUICK CARDS ====================
+        function renderQuickCards() {
+            const container = document.getElementById('quick-cards-container');
+            container.innerHTML = '';
+            
+            const shuffled = [...vocabulary].sort(() => 0.5 - Math.random());
+            const selected = shuffled.slice(0, Math.min(3, shuffled.length));
+
+            selected.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-50 border border-slate-100 rounded-2xl p-5 hover:bg-sky-50/40 transition-all flex flex-col justify-between";
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="bg-white px-2.5 py-0.5 rounded-full text-[10px] font-bold text-slate-400 border border-slate-100">${item.book || "B1"}-${item.lesson || "L1"} 精選</span>
+                            <button onclick="speak('${item.word}')" class="text-sky-500 hover:scale-110 active:scale-95 transition-all">
+                                <i class="fa-solid fa-volume-high text-sm"></i>
+                            </button>
+                        </div>
+                        <h4 class="font-extrabold text-lg text-slate-800 tracking-wide">${item.word}</h4>
+                        <p class="text-slate-500 text-xs font-bold mt-1">${item.translation}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-100/80">
+                        <p class="text-[10px] text-slate-400 italic">例句拼讀：</p>
+                        <p class="text-[11px] text-slate-600 line-clamp-2 mt-0.5" title="${item.sentence}">${item.sentence}</p>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 渲染學生答對率與熟記進度面板
+        function renderStudentStats() {
+            if (!currentUser) return;
+            
+            const bookVal = currentUser.levelBook || "B1";
+            const lessonVal = currentUser.levelLesson || "L1";
+            document.getElementById('dashboard-student-level').textContent = `${bookVal} - ${lessonVal}`;
+
+            const username = currentUser.username;
+            const progress = studentProgress[username] || {};
+
+            let totalTestedCount = 0;
+            let totalCorrectCount = 0;
+            
+            Object.keys(progress).forEach(word => {
+                totalTestedCount += progress[word].totalTested || 0;
+                totalCorrectCount += progress[word].correctAnswers || 0;
+            });
+
+            document.getElementById('stat-total-tested').textContent = totalTestedCount;
+            const overallRate = totalTestedCount > 0 ? Math.round((totalCorrectCount / totalTestedCount) * 100) : 0;
+            document.getElementById('stat-overall-rate').textContent = `${overallRate}%`;
+
+            const tbody = document.getElementById('student-progress-table-body');
+            tbody.innerHTML = '';
+
+            const sortedVocab = [...vocabulary].sort((a, b) => {
+                const aBook = parseInt((a.book || "B1").replace("B", ""));
+                const bBook = parseInt((b.book || "B1").replace("B", ""));
+                if (aBook !== bBook) return aBook - bBook;
+                const aLesson = parseInt((a.lesson || "L1").replace("L", ""));
+                const bLesson = parseInt((b.lesson || "L1").replace("L", ""));
+                return aLesson - bLesson;
+            });
+
+            sortedVocab.forEach(item => {
+                const wordProg = progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
+                const correctRate = wordProg.totalTested > 0 ? Math.round((wordProg.correctAnswers / wordProg.totalTested) * 100) : 0;
+                
+                let statusBadge = '';
+                let bgStyle = '';
+                if (wordProg.correctCount >= 8) {
+                    statusBadge = `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200"><i class="fa-solid fa-circle-check"></i> 完全熟記 (免測)</span>`;
+                    bgStyle = 'bg-emerald-50/25';
+                } else if (wordProg.correctCount >= 5) {
+                    statusBadge = `<span class="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-blue-200"><i class="fa-solid fa-face-smile"></i> 已熟悉 (少出現)</span>`;
+                    bgStyle = 'bg-blue-50/20';
+                } else {
+                    statusBadge = `<span class="bg-slate-100 text-slate-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-slate-200">學習中</span>`;
+                    bgStyle = '';
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = `hover:bg-slate-50/50 transition-colors ${bgStyle}`;
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-slate-800">
+                        <div class="flex items-center gap-2">
+                            <span>${item.word}</span>
+                            <span class="bg-slate-100 text-slate-400 text-[9px] px-1.5 py-0.2 rounded">${item.book || "B1"}-${item.lesson || "L1"}</span>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 text-slate-500 font-semibold">${item.translation}</td>
+                    <td class="py-3 px-4 text-center font-bold text-slate-600">${wordProg.totalTested} 次</td>
+                    <td class="py-3 px-4 text-center">
+                        <span class="text-indigo-600 font-bold">${wordProg.correctAnswers} 次</span> / 
+                        <span class="text-emerald-600 font-black">${wordProg.correctCount} 次</span>
+                    </td>
+                    <td class="py-3 px-4 text-center font-extrabold text-slate-700">${correctRate}%</td>
+                    <td class="py-3 px-4 text-center">${statusBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateMasteredBadge() {
+            const el = document.getElementById('mastered-count');
+            if (el) {
+                el.textContent = masteredWords.size;
+            }
+        }
+
+        // ==================== VOCAB LIST TAB ====================
+        function renderVocabList() {
+            const grid = document.getElementById('vocab-grid');
+            document.getElementById('total-words-badge').textContent = vocabulary.length;
+            grid.innerHTML = '';
+
+            vocabulary.forEach((item, index) => {
+                const isMastered = masteredWords.has(item.word);
+                const card = document.createElement('div');
+                card.className = `bg-white border rounded-3xl p-5 hover:shadow-md transition-all flex flex-col justify-between ${isMastered ? 'border-emerald-200 shadow-emerald-50 bg-emerald-50/10' : 'border-slate-100'}`;
+                
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-[10px] font-bold text-indigo-500 tracking-wide uppercase">${item.book || "B1"}-${item.lesson || "L1"} 字卡</span>
+                            <div class="flex items-center gap-2">
+                                <button onclick="toggleWordMastered('${item.word}')" class="text-sm ${isMastered ? 'text-emerald-500' : 'text-slate-300'} hover:scale-110 transition-all" title="${isMastered ? '已掌握' : '標記為已掌握'}">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                </button>
+                                <button onclick="speak('${item.word}')" class="text-sky-500 hover:text-sky-600 bg-sky-50 w-7 h-7 rounded-lg flex items-center justify-center hover:scale-110 transition-all">
+                                    <i class="fa-solid fa-volume-high text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <h3 class="font-bold text-lg text-slate-800 tracking-wide">${item.word}</h3>
+                        <p class="text-slate-500 text-xs font-semibold mt-1">${item.translation}</p>
+                        
+                        <div class="mt-4 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                            <div class="flex items-center gap-1 text-[10px] text-slate-400 font-bold mb-1">
+                                <i class="fa-regular fa-comments"></i> 情境句子挑戰提示
+                            </div>
+                            <p class="text-xs text-slate-700 leading-relaxed">${item.sentence}</p>
+                            <p class="text-[11px] text-slate-400 mt-1">${item.sentenceTranslation}</p>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        async function toggleWordMastered(word) {
+            if (masteredWords.has(word)) {
+                masteredWords.delete(word);
+                if (currentUser) {
+                    await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", word);
+                }
+                if (currentUser && studentProgress[currentUser.username]?.[word]) {
+                    studentProgress[currentUser.username][word].correctCount = 0;
+                    await saveProgressToStorage();
+                }
+                showToast(`已將 "${word}" 移出熟記清單`, 'info');
+            } else {
+                masteredWords.add(word);
+                if (currentUser) {
+                    if (!studentProgress[currentUser.username]) studentProgress[currentUser.username] = {};
+                    if (!studentProgress[currentUser.username][word]) {
+                        studentProgress[currentUser.username][word] = { correctCount: 8, totalTested: 1, correctAnswers: 1 };
+                    } else {
+                        studentProgress[currentUser.username][word].correctCount = 8;
+                    }
+                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word }, { onConflict: "user_id,word" });
+                    await saveProgressToStorage();
+                }
+                showToast(`恭喜掌握 "${word}"！`, 'success');
+            }
+            updateMasteredBadge();
+            renderVocabList();
+            renderStudentStats();
+        }
+
+        function searchVocabulary() {
+            const query = document.getElementById('vocab-search').value.toLowerCase().trim();
+            const cards = document.getElementById('vocab-grid').children;
+            
+            vocabulary.forEach((item, index) => {
+                const matches = item.word.toLowerCase().includes(query) || item.translation.includes(query);
+                if (matches) {
+                    cards[index].classList.remove('hidden');
+                } else {
+                    cards[index].classList.add('hidden');
+                }
+            });
+        }
+
+
+        // ==================== ADMIN PANEL FUNCTIONS ====================
+        function renderAdminList() {
+            const tbody = document.getElementById('admin-table-body');
+            tbody.innerHTML = '';
+
+            vocabulary.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-slate-800">${item.word}</td>
+                    <td class="py-3 px-4"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">${item.book || "B1"}-${item.lesson || "L1"}</span></td>
+                    <td class="py-3 px-4 text-slate-500 font-medium">${item.translation}</td>
+                    <td class="py-3 px-4 max-w-xs">
+                        <p class="text-slate-700 font-medium line-clamp-1" title="${item.sentence}">${item.sentence}</p>
+                        <p class="text-slate-400 text-[10px] line-clamp-1" title="${item.sentenceTranslation}">${item.sentenceTranslation}</p>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                            <button onclick="editVocabulary(${index})" class="text-indigo-500 hover:text-indigo-700 bg-indigo-50 w-7 h-7 rounded-lg flex items-center justify-center transition-all" title="編輯">
+                                <i class="fa-solid fa-pen-to-square text-xs"></i>
+                            </button>
+                            <button onclick="deleteVocabulary(${index})" class="text-rose-500 hover:text-rose-700 bg-rose-50 w-7 h-7 rounded-lg flex items-center justify-center transition-all" title="刪除">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function saveVocabulary(event) {
+            event.preventDefault();
+            const word = document.getElementById('form-word').value.trim();
+            const translation = document.getElementById('form-translation').value.trim();
+            const sentence = document.getElementById('form-sentence').value.trim();
+            const sentenceTranslation = document.getElementById('form-sentence-translation').value.trim();
+            const book = document.getElementById('form-book').value;
+            const lesson = document.getElementById('form-lesson').value;
+            const editIndex = document.getElementById('edit-index').value;
+
+            const wordLower = word.toLowerCase();
+            const sentenceLower = sentence.toLowerCase();
+            if (!sentenceLower.includes(wordLower)) {
+                showToast(`例句中找不到對應的單字 "${word}"，請再次確認拼寫！`, 'error');
+                return;
+            }
+
+            const dbPayload = {
+                word,
+                translation,
+                sentence,
+                sentence_translation: sentenceTranslation,
+                book,
+                lesson
+            };
+            const payload = { word, translation, sentence, sentenceTranslation, book, lesson };
+
+            if (editIndex !== "") {
+                const original = vocabulary[parseInt(editIndex)];
+                const { data, error } = await db
+                    .from("vocabulary")
+                    .update(dbPayload)
+                    .eq("id", original.id)
+                    .select()
+                    .single();
+                if (error) {
+                    console.error(error);
+                    showToast("更新單字失敗，請確認管理員權限。", "error");
+                    return;
+                }
+                vocabulary[parseInt(editIndex)] = mapVocabRow(data);
+                showToast(`成功更新單字卡：${word}`);
+            } else {
+                if (vocabulary.some(item => item.word.toLowerCase() === wordLower)) {
+                    showToast("此單字已經存在於單字庫中！", "error");
+                    return;
+                }
+                const { data, error } = await db
+                    .from("vocabulary")
+                    .insert(dbPayload)
+                    .select()
+                    .single();
+                if (error) {
+                    console.error(error);
+                    showToast("新增單字失敗，請確認管理員權限。", "error");
+                    return;
+                }
+                vocabulary.push(mapVocabRow(data));
+                showToast(`成功每日新增單字卡：${word} (${book}-${lesson})`);
+            }
+
+            resetAdminForm();
+            renderAdminList();
+        }
+
+        function editVocabulary(index) {
+            const item = vocabulary[index];
+            document.getElementById('edit-index').value = index;
+            document.getElementById('form-word').value = item.word;
+            document.getElementById('form-translation').value = item.translation;
+            document.getElementById('form-sentence').value = item.sentence;
+            document.getElementById('form-sentence-translation').value = item.sentenceTranslation;
+            document.getElementById('form-book').value = item.book || "B1";
+            document.getElementById('form-lesson').value = item.lesson || "L1";
+
+            document.getElementById('form-submit-btn').innerHTML = '<i class="fa-solid fa-pen-to-square mr-1"></i> 更新單字卡';
+            showToast("已載入單字資訊，編輯完成後點擊更新", "info");
+        }
+
+        async function deleteVocabulary(index) {
+            const word = vocabulary[index].word;
+            const { error } = await db.from("vocabulary").delete().eq("id", vocabulary[index].id);
+            if (error) {
+                console.error(error);
+                showToast("刪除單字失敗，請確認管理員權限。", "error");
+                return;
+            }
+            vocabulary.splice(index, 1);
+            masteredWords.delete(word);
+            if (currentUser) {
+                await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", word);
+            }
+            updateMasteredBadge();
+            renderAdminList();
+            showToast(`已刪除單字：${word}`, 'info');
+        }
+
+        function resetAdminForm() {
+            document.getElementById('vocab-form').reset();
+            document.getElementById('edit-index').value = "";
+            document.getElementById('form-submit-btn').innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> 儲存單字卡';
+            document.getElementById('form-book').value = "B1";
+            document.getElementById('form-lesson').value = "L1";
+        }
+
+        async function restoreDefaultVocab() {
+            const rows = DEFAULT_VOCABULARY.map(item => ({
+                word: item.word,
+                translation: item.translation,
+                sentence: item.sentence,
+                sentence_translation: item.sentenceTranslation,
+                book: item.book,
+                lesson: item.lesson
+            }));
+            const { error } = await db.from("vocabulary").upsert(rows, { onConflict: "word" });
+            if (error) {
+                console.error(error);
+                showToast("還原預設單字失敗，請確認管理員權限。", "error");
+                return;
+            }
+            await loadSavedVocab();
+            renderAdminList();
+            showToast("已還原預設10大國中核心單字與關卡！");
+        }
+
+
+        // ==================== 智慧題目選取演算法 (20題原則、優先度與間隔記憶複習) ====================
+        function generateGameWordPool(count = 20) {
+            if (!currentUser) return [];
+            const username = currentUser.username;
+            const progress = studentProgress[username] || {};
+            
+            const limitBook = currentUser.levelBook || "B1";
+            const limitLesson = currentUser.levelLesson || "L1";
+
+            function getLevelScore(b, l) {
+                const bVal = parseInt(b.replace("B", ""));
+                const lVal = parseInt(l.replace("L", ""));
+                return bVal * 10 + lVal;
+            }
+
+            const maxAllowedScore = getLevelScore(limitBook, limitLesson);
+
+            let availableWords = vocabulary.filter(item => {
+                const itemBook = item.book || "B1";
+                const itemLesson = item.lesson || "L1";
+                return getLevelScore(itemBook, itemLesson) <= maxAllowedScore;
+            });
+
+            availableWords = availableWords.filter(item => {
+                const wordProg = progress[item.word] || { correctCount: 0 };
+                return wordProg.correctCount < 8; 
+            });
+
+            if (availableWords.length === 0) {
+                availableWords = [...vocabulary];
+            }
+
+            const currentExactWords = availableWords.filter(item => {
+                return (item.book || "B1") === limitBook && (item.lesson || "L1") === limitLesson;
+            });
+
+            const reviewWords = availableWords.filter(item => {
+                return !((item.book || "B1") === limitBook && (item.lesson || "L1") === limitLesson);
+            });
+
+            function applySpacedRepetitionFilter(pool) {
+                return pool.filter(item => {
+                    const wordProg = progress[item.word] || { correctCount: 0 };
+                    if (wordProg.correctCount >= 5 && wordProg.correctCount <= 7) {
+                        return Math.random() < 0.25; 
+                    }
+                    return true;
+                });
+            }
+
+            let filteredExact = applySpacedRepetitionFilter(currentExactWords);
+            if (filteredExact.length === 0 && currentExactWords.length > 0) {
+                filteredExact = currentExactWords;
+            }
+
+            let filteredReview = applySpacedRepetitionFilter(reviewWords);
+            if (filteredReview.length === 0 && reviewWords.length > 0) {
+                filteredReview = reviewWords;
+            }
+
+            let finalPool = [];
+            const shuffle = arr => arr.sort(() => 0.5 - Math.random());
+
+            const shuffledExact = shuffle([...filteredExact]);
+            finalPool = [...shuffledExact];
+
+            if (finalPool.length < count) {
+                const neededCount = count - finalPool.length;
+                const shuffledReview = shuffle([...filteredReview]);
+                finalPool = [...finalPool, ...shuffledReview.slice(0, neededCount)];
+            }
+
+            if (finalPool.length < count) {
+                const extraWords = availableWords.filter(item => !finalPool.includes(item));
+                finalPool = [...finalPool, ...shuffle(extraWords).slice(0, count - finalPool.length)];
+            }
+
+            return finalPool.slice(0, count);
+        }
+
+
+        // ==================== GAME 1: 聽音辨字王 ====================
+        let listeningGameData = {
+            currentIndex: 0,
+            score: 0,
+            correctWord: "",
+            shuffledList: []
+        };
+
+        function startListeningGame() {
+            const gamePool = generateGameWordPool(20);
+            if (gamePool.length < 4) {
+                showToast("當前設定程度內，單字庫至少需要4個單字才能進行遊戲，請在管理者面板確認或新增單字！", "error");
+                return;
+            }
+            switchTab('game-listening');
+            
+            listeningGameData.shuffledList = gamePool;
+            listeningGameData.currentIndex = 0;
+            listeningGameData.score = 0;
+
+            document.getElementById('listen-total-count').textContent = listeningGameData.shuffledList.length;
+            document.getElementById('listen-score').textContent = "0";
+
+            loadListeningQuestion();
+        }
+
+        function loadListeningQuestion() {
+            const feedback = document.getElementById('listen-feedback');
+            feedback.classList.add('hidden');
+
+            const index = listeningGameData.currentIndex;
+            document.getElementById('listen-current-index').textContent = index + 1;
+
+            const targetItem = listeningGameData.shuffledList[index];
+            listeningGameData.correctWord = targetItem.word;
+
+            const distractors = vocabulary
+                .filter(item => item.word !== targetItem.word)
+                .sort(() => 0.5 - Math.random())
+                .slice(0, 3);
+
+            const options = [targetItem, ...distractors].sort(() => 0.5 - Math.random());
+
+            const optionsGrid = document.getElementById('listen-options-grid');
+            optionsGrid.innerHTML = '';
+
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "game-opt-btn bg-slate-50 border-2 border-slate-100 hover:border-sky-300 hover:bg-sky-50/20 active:scale-98 p-4 rounded-2xl font-bold text-slate-800 transition-all text-sm md:text-base flex flex-col items-center justify-center text-center";
+                btn.onclick = () => selectListeningAnswer(opt.word, btn);
+                btn.innerHTML = `
+                    <span class="tracking-wide">${opt.word}</span>
+                    <span class="text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
+                `;
+                optionsGrid.appendChild(btn);
+            });
+
+            setTimeout(() => {
+                playTargetWordSound();
+            }, 500);
+        }
+
+        function playTargetWordSound() {
+            speak(listeningGameData.correctWord);
+        }
+
+        function selectListeningAnswer(selectedWord, selectedBtn) {
+            const buttons = document.querySelectorAll('.game-opt-btn');
+            buttons.forEach(btn => btn.disabled = true);
+
+            const feedback = document.getElementById('listen-feedback');
+            const feedbackIcon = document.getElementById('listen-feedback-icon');
+            const feedbackText = document.getElementById('listen-feedback-text');
+            const feedbackBox = feedback.querySelector('div');
+
+            const isCorrect = selectedWord === listeningGameData.correctWord;
+            
+            logAnswer(listeningGameData.correctWord, isCorrect);
+
+            if (isCorrect) {
+                listeningGameData.score += 10;
+                document.getElementById('listen-score').textContent = listeningGameData.score;
+                
+                selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
+                selectedBtn.classList.add('bg-emerald-50', 'border-emerald-500', 'text-emerald-700');
+                
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-face-laugh-beam text-emerald-500"></i>';
+                feedbackText.textContent = "太厲害了！答對了！";
+                
+                speak(listeningGameData.correctWord);
+            } else {
+                selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
+                selectedBtn.classList.add('bg-rose-50', 'border-rose-500', 'text-rose-700');
+                
+                buttons.forEach(btn => {
+                    if (btn.querySelector('span').textContent.trim() === listeningGameData.correctWord) {
+                        btn.classList.add('bg-emerald-50/50', 'border-emerald-300', 'text-emerald-700');
+                    }
+                });
+
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-face-sad-cry text-rose-500"></i>';
+                feedbackText.textContent = `答錯囉，正確答案是：${listeningGameData.correctWord}`;
+            }
+
+            feedback.classList.remove('hidden');
+        }
+
+        function nextListeningQuestion() {
+            listeningGameData.currentIndex++;
+            if (listeningGameData.currentIndex < listeningGameData.shuffledList.length) {
+                loadListeningQuestion();
+            } else {
+                showGameOverModal(listeningGameData.score, listeningGameData.shuffledList.length);
+            }
+        }
+
+
+        // ==================== GAME 2: 字母拼拼樂 ====================
+        let spellingGameData = {
+            currentIndex: 0,
+            shuffledList: [],
+            correctWord: "",
+            userAnswer: [],
+            combo: 0
+        };
+
+        function startSpellingGame() {
+            const gamePool = generateGameWordPool(20);
+            if (gamePool.length < 1) {
+                showToast("單字庫中沒有單字，請到管理者面板新增單字！", "error");
+                return;
+            }
+            switchTab('game-spelling');
+            
+            spellingGameData.shuffledList = gamePool;
+            spellingGameData.currentIndex = 0;
+            spellingGameData.combo = 0;
+
+            document.getElementById('spell-total-count').textContent = spellingGameData.shuffledList.length;
+            document.getElementById('spell-combo').textContent = "0";
+
+            loadSpellingQuestion();
+        }
+
+        function loadSpellingQuestion() {
+            document.getElementById('spell-feedback').classList.add('hidden');
+            document.getElementById('spell-current-index').textContent = spellingGameData.currentIndex + 1;
+
+            const targetItem = spellingGameData.shuffledList[spellingGameData.currentIndex];
+            spellingGameData.correctWord = targetItem.word;
+            spellingGameData.userAnswer = [];
+
+            document.getElementById('spell-translation-hint').textContent = targetItem.translation;
+
+            const slotsContainer = document.getElementById('spell-slots-container');
+            slotsContainer.innerHTML = '';
+            
+            for (let i = 0; i < targetItem.word.length; i++) {
+                const char = targetItem.word[i];
+                const slot = document.createElement('div');
+                if (char === ' ') {
+                    slot.className = "w-6 h-10 border-b-2 border-transparent flex items-center justify-center mx-1 font-bold text-slate-300";
+                    slot.textContent = " ";
+                    slot.dataset.fixed = "true";
+                } else if (char === '-' || char === ';') {
+                    slot.className = "w-8 h-10 border-b-2 border-transparent flex items-center justify-center mx-1 font-bold text-slate-500 text-lg";
+                    slot.textContent = char;
+                    slot.dataset.fixed = "true";
+                } else {
+                    slot.className = "w-9 h-10 border-b-2 border-slate-300 flex items-center justify-center text-lg font-black text-slate-800 transition-all";
+                    slot.textContent = "";
+                    slot.dataset.index = i;
+                }
+                slotsContainer.appendChild(slot);
+            }
+
+            const lettersOnly = targetItem.word.replace(/[^a-zA-Z]/g, '').split('');
+            const shuffledLetters = lettersOnly.sort(() => 0.5 - Math.random());
+
+            const bubblesContainer = document.getElementById('spell-bubbles-container');
+            bubblesContainer.innerHTML = '';
+
+            shuffledLetters.forEach((letter, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "letter-bubble bg-white hover:bg-amber-100 border-2 border-amber-200 active:scale-90 text-amber-700 font-extrabold w-11 h-11 rounded-full shadow-sm hover:shadow flex items-center justify-center text-lg transition-all";
+                btn.textContent = letter;
+                btn.dataset.index = idx;
+                btn.onclick = () => selectLetterBubble(btn, letter);
+                bubblesContainer.appendChild(btn);
+            });
+
+            setTimeout(() => { playSpellingSound(); }, 400);
+        }
+
+        function playSpellingSound() {
+            speak(spellingGameData.correctWord);
+        }
+
+        function selectLetterBubble(btn, letter) {
+            const slots = Array.from(document.getElementById('spell-slots-container').children);
+            const emptySlot = slots.find(slot => slot.textContent === "" && !slot.dataset.fixed);
+            
+            if (emptySlot) {
+                emptySlot.textContent = letter;
+                emptySlot.classList.remove('border-slate-300');
+                emptySlot.classList.add('border-amber-400', 'text-amber-600', 'scale-110');
+                setTimeout(() => emptySlot.classList.remove('scale-110'), 150);
+
+                btn.style.visibility = 'hidden';
+                btn.dataset.targetSlotIdx = slots.indexOf(emptySlot);
+            }
+        }
+
+        function clearSpellingInput() {
+            const slots = Array.from(document.getElementById('spell-slots-container').children);
+            slots.forEach(slot => {
+                if (!slot.dataset.fixed) {
+                    slot.textContent = "";
+                    slot.className = "w-9 h-10 border-b-2 border-slate-300 flex items-center justify-center text-lg font-black text-slate-800 transition-all";
+                }
+            });
+
+            const bubbles = document.querySelectorAll('.letter-bubble');
+            bubbles.forEach(b => {
+                b.style.visibility = 'visible';
+                delete b.dataset.targetSlotIdx;
+            });
+        }
+
+        function checkSpellingAnswer() {
+            const slots = Array.from(document.getElementById('spell-slots-container').children);
+            const userSpelled = slots.map(slot => slot.textContent).join('').trim();
+            const correctSpelling = spellingGameData.correctWord;
+
+            const feedback = document.getElementById('spell-feedback');
+            const feedbackIcon = document.getElementById('spell-feedback-icon');
+            const feedbackText = document.getElementById('spell-feedback-text');
+            const feedbackBox = feedback.querySelector('div');
+
+            const isCorrect = userSpelled.toLowerCase() === correctSpelling.toLowerCase();
+            
+            logAnswer(correctSpelling, isCorrect);
+
+            document.querySelectorAll('.letter-bubble').forEach(b => b.disabled = true);
+
+            if (isCorrect) {
+                spellingGameData.combo++;
+                document.getElementById('spell-combo').textContent = spellingGameData.combo;
+                
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles text-emerald-500 animate-bounce"></i>';
+                feedbackText.textContent = "太神奇了！單字拼寫完全正確！";
+                speak(correctSpelling);
+            } else {
+                spellingGameData.combo = 0;
+                document.getElementById('spell-combo').textContent = "0";
+
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
+                feedbackText.textContent = `喔不！正確拼寫是: ${correctSpelling}`;
+                
+                slots.forEach((slot, index) => {
+                    if (!slot.dataset.fixed) {
+                        slot.textContent = correctSpelling[index];
+                        slot.className = "w-9 h-10 border-b-2 border-rose-300 flex items-center justify-center text-lg font-black text-rose-600";
+                    }
+                });
+            }
+
+            feedback.classList.remove('hidden');
+        }
+
+        function nextSpellingQuestion() {
+            spellingGameData.currentIndex++;
+            if (spellingGameData.currentIndex < spellingGameData.shuffledList.length) {
+                loadSpellingQuestion();
+            } else {
+                showGameOverModal(spellingGameData.combo * 15, spellingGameData.shuffledList.length);
+            }
+        }
+
+
+        // ==================== GAME 3: 情境句子填空 ====================
+        let sentenceGameData = {
+            currentIndex: 0,
+            shuffledList: [],
+            correctWord: "",
+            score: 0
+        };
+
+        function startSentenceGame() {
+            const gamePool = generateGameWordPool(20);
+            if (gamePool.length < 4) {
+                showToast("當前設定程度內，單字庫至少需要4個單字才能進行情境填空，請在管理者面板新增單字或調高程度！", "error");
+                return;
+            }
+            switchTab('game-sentence');
+
+            sentenceGameData.shuffledList = gamePool;
+            sentenceGameData.currentIndex = 0;
+            sentenceGameData.score = 0;
+
+            document.getElementById('sentence-total-count').textContent = sentenceGameData.shuffledList.length;
+            document.getElementById('sentence-score').textContent = "0";
+
+            loadSentenceQuestion();
+        }
+
+        function loadSentenceQuestion() {
+            document.getElementById('sentence-feedback').classList.add('hidden');
+            document.getElementById('sentence-translation-hint-box').classList.add('hidden');
+            document.getElementById('sentence-hint-btn').classList.remove('hidden');
+
+            document.getElementById('sentence-current-index').textContent = sentenceGameData.currentIndex + 1;
+
+            const targetItem = sentenceGameData.shuffledList[sentenceGameData.currentIndex];
+            sentenceGameData.correctWord = targetItem.word;
+
+            const escapedWord = targetItem.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
+            
+            let maskedSentence = targetItem.sentence.replace(regex, "_______");
+            
+            if (!maskedSentence.includes("_______")) {
+                maskedSentence = targetItem.sentence.replace(targetItem.word, "_______");
+            }
+
+            document.getElementById('sentence-question-text').textContent = maskedSentence;
+            document.getElementById('sentence-translation-hint-box').textContent = targetItem.sentenceTranslation;
+
+            const distractors = vocabulary
+                .filter(item => item.word.toLowerCase() !== targetItem.word.toLowerCase())
+                .sort(() => 0.5 - Math.random())
+                .slice(0, 3);
+
+            const options = [targetItem, ...distractors].sort(() => 0.5 - Math.random());
+
+            const optionsGrid = document.getElementById('sentence-options-grid');
+            optionsGrid.innerHTML = '';
+
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "sentence-opt-btn bg-slate-50 border-2 border-slate-100 hover:border-emerald-300 hover:bg-emerald-50/20 active:scale-98 p-4 rounded-2xl font-bold text-slate-800 transition-all text-sm flex flex-col justify-center items-center text-center";
+                btn.onclick = () => selectSentenceAnswer(opt.word, btn);
+                btn.innerHTML = `
+                    <span class="tracking-wide text-base">${opt.word}</span>
+                    <span class="text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
+                `;
+                optionsGrid.appendChild(btn);
+            });
+        }
+
+        function toggleSentenceHint() {
+            document.getElementById('sentence-translation-hint-box').classList.toggle('hidden');
+        }
+
+        function selectSentenceAnswer(selectedWord, selectedBtn) {
+            const buttons = document.querySelectorAll('.sentence-opt-btn');
+            buttons.forEach(btn => btn.disabled = true);
+
+            const feedback = document.getElementById('sentence-feedback');
+            const feedbackIcon = document.getElementById('sentence-feedback-icon');
+            const feedbackText = document.getElementById('sentence-feedback-text');
+            const feedbackBox = feedback.querySelector('div');
+
+            const isCorrect = selectedWord.toLowerCase() === sentenceGameData.correctWord.toLowerCase();
+            
+            logAnswer(sentenceGameData.correctWord, isCorrect);
+
+            document.getElementById('sentence-translation-hint-box').classList.remove('hidden');
+            document.getElementById('sentence-hint-btn').classList.add('hidden');
+
+            if (isCorrect) {
+                sentenceGameData.score += 10;
+                document.getElementById('sentence-score').textContent = sentenceGameData.score;
+                
+                selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
+                selectedBtn.classList.add('bg-emerald-50', 'border-emerald-500', 'text-emerald-700');
+                
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+                feedbackText.textContent = "超讚！例句語境完全正確！";
+                
+                speak(sentenceGameData.correctWord);
+            } else {
+                selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
+                selectedBtn.classList.add('bg-rose-50', 'border-rose-500', 'text-rose-700');
+                
+                buttons.forEach(btn => {
+                    if (btn.querySelector('span').textContent.trim().toLowerCase() === sentenceGameData.correctWord.toLowerCase()) {
+                        btn.classList.add('bg-emerald-50/50', 'border-emerald-300', 'text-emerald-700');
+                    }
+                });
+
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
+                feedbackText.textContent = `可惜了！正確答案應該是：${sentenceGameData.correctWord}`;
+            }
+
+            feedback.classList.remove('hidden');
+        }
+
+        function nextSentenceQuestion() {
+            sentenceGameData.currentIndex++;
+            if (sentenceGameData.currentIndex < sentenceGameData.shuffledList.length) {
+                loadSentenceQuestion();
+            } else {
+                showGameOverModal(sentenceGameData.score, sentenceGameData.shuffledList.length);
+            }
+        }
+
+
+        // ==================== GAME 4: 翻牌連連看 ====================
+        let matchingGameData = {
+            clicks: 0,
+            matchedPairs: 0,
+            selectedCard: null
+        };
+
+        function startMatchingGame() {
+            const gamePool = generateGameWordPool(6);
+            if (gamePool.length < 6) {
+                showToast("單字庫至少需要6個合適程度的單字才能進行翻牌配對，請到管理者面板確認教材！", "error");
+                return;
+            }
+            switchTab('game-matching');
+            document.getElementById('match-complete-panel').classList.add('hidden');
+            
+            matchingGameData.clicks = 0;
+            matchingGameData.matchedPairs = 0;
+            matchingGameData.selectedCard = null;
+
+            document.getElementById('match-pairs-count').textContent = "0";
+            document.getElementById('match-clicks').textContent = "0";
+
+            let cards = [];
+            gamePool.forEach((item, index) => {
+                cards.push({
+                    id: `en-${index}`,
+                    pairId: index,
+                    text: item.word,
+                    lang: 'en'
+                });
+                cards.push({
+                    id: `zh-${index}`,
+                    pairId: index,
+                    text: item.translation,
+                    lang: 'zh'
+                });
+            });
+
+            cards.sort(() => 0.5 - Math.random());
+
+            const grid = document.getElementById('matching-grid');
+            grid.innerHTML = '';
+
+            cards.forEach(cardData => {
+                const outer = document.createElement('div');
+                outer.className = "h-28 perspective cursor-pointer";
+                outer.onclick = () => handleCardClick(outer, cardData);
+
+                outer.innerHTML = `
+                    <div class="card-inner w-full h-full transition-all duration-500">
+                        <div class="card-back absolute inset-0 rounded-2xl flex flex-col items-center justify-center shadow-md">
+                            <i class="fa-solid fa-graduation-cap text-3xl text-white/40 mb-1"></i>
+                            <span class="text-[10px] text-white/60 font-bold">Vocab</span>
+                        </div>
+                        <div class="card-front absolute inset-0 rounded-2xl flex items-center justify-center p-3 text-center font-bold text-sm md:text-base border-2 border-indigo-200 bg-white text-slate-800 shadow-md">
+                            ${cardData.text}
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(outer);
+            });
+        }
+
+        function handleCardClick(cardElement, cardData) {
+            const inner = cardElement.querySelector('.card-inner');
+            
+            if (inner.classList.contains('flipped') || inner.classList.contains('matched') || matchingGameData.busy) return;
+
+            inner.classList.add('flipped');
+            matchingGameData.clicks++;
+            document.getElementById('match-clicks').textContent = matchingGameData.clicks;
+
+            if (!matchingGameData.selectedCard) {
+                matchingGameData.selectedCard = { element: cardElement, data: cardData };
+            } else {
+                const first = matchingGameData.selectedCard;
+                const second = { element: cardElement, data: cardData };
+
+                if (first.data.pairId === second.data.pairId && first.data.lang !== second.data.lang) {
+                    matchingGameData.busy = true;
+                    setTimeout(() => {
+                        const inner1 = first.element.querySelector('.card-inner');
+                        const inner2 = second.element.querySelector('.card-inner');
+
+                        inner1.classList.add('matched');
+                        inner2.classList.add('matched');
+
+                        const front1 = inner1.querySelector('.card-front');
+                        const front2 = inner2.querySelector('.card-front');
+                        front1.style.backgroundColor = '#f0fdf4';
+                        front1.style.borderColor = '#22c55e';
+                        front1.style.color = '#15803d';
+
+                        front2.style.backgroundColor = '#f0fdf4';
+                        front2.style.borderColor = '#22c55e';
+                        front2.style.color = '#15803d';
+
+                        const englishWord = first.data.lang === 'en' ? first.data.text : second.data.text;
+                        speak(englishWord);
+
+                        logAnswer(englishWord, true);
+
+                        matchingGameData.matchedPairs++;
+                        document.getElementById('match-pairs-count').textContent = matchingGameData.matchedPairs;
+                        matchingGameData.selectedCard = null;
+                        matchingGameData.busy = false;
+
+                        if (matchingGameData.matchedPairs === 6) {
+                            finishMatchingGame();
+                        }
+                    }, 600);
+
+                } else {
+                    matchingGameData.busy = true;
+                    
+                    const front1 = first.element.querySelector('.card-front');
+                    const front2 = second.element.querySelector('.card-front');
+                    front1.style.borderColor = '#f43f5e';
+                    front2.style.borderColor = '#f43f5e';
+
+                    setTimeout(() => {
+                        inner.classList.remove('flipped');
+                        const inner1 = first.element.querySelector('.card-inner');
+                        if (inner1) {
+                            inner1.classList.remove('flipped');
+                        }
+                        
+                        front1.style.borderColor = '#e0f2fe';
+                        front2.style.borderColor = '#e0f2fe';
+
+                        matchingGameData.selectedCard = null;
+                        matchingGameData.busy = false;
+                    }, 1200);
+                }
+            }
+        }
+
+        function finishMatchingGame() {
+            document.getElementById('match-complete-panel').classList.remove('hidden');
+            document.getElementById('match-final-clicks').textContent = matchingGameData.clicks;
+            showGameOverModal(60, 6, "恭喜完成！");
+        }
+
+
+        // ==================== GAME 5: AI 口說發音王 (全新功能) ====================
+        let pronunciationGameData = {
+            currentIndex: 0,
+            score: 0,
+            correctWord: "",
+            shuffledList: []
+        };
+
+        function startPronunciationGame() {
+            const gamePool = generateGameWordPool(20);
+            if (gamePool.length < 1) {
+                showToast("單字庫中沒有單字，請到管理者面板新增單字！", "error");
+                return;
+            }
+            switchTab('game-pronunciation');
+            
+            pronunciationGameData.shuffledList = gamePool;
+            pronunciationGameData.currentIndex = 0;
+            pronunciationGameData.score = 0;
+
+            document.getElementById('pronounce-total-count').textContent = pronunciationGameData.shuffledList.length;
+            document.getElementById('pronounce-score').textContent = "0";
+
+            // 檢查瀏覽器對 Web Speech API 的支援度
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const warningBox = document.getElementById('pronounce-unsupported-warning');
+            if (!SpeechRecognition) {
+                warningBox.classList.remove('hidden');
+            } else {
+                warningBox.classList.add('hidden');
+            }
+
+            loadPronunciationQuestion();
+        }
+
+        function loadPronunciationQuestion() {
+            // 重置介面與狀態
+            stopSpeechRecognitionGracefully();
+            document.getElementById('pronounce-feedback').classList.add('hidden');
+            document.getElementById('pronounce-transcript-box').classList.add('hidden');
+            
+            const index = pronunciationGameData.currentIndex;
+            document.getElementById('pronounce-current-index').textContent = index + 1;
+
+            const targetItem = pronunciationGameData.shuffledList[index];
+            pronunciationGameData.correctWord = targetItem.word;
+
+            // 渲染資訊
+            document.getElementById('pronounce-target-word').textContent = targetItem.word;
+            document.getElementById('pronounce-target-translation').textContent = targetItem.translation;
+            document.getElementById('pronounce-book-tag').textContent = `${targetItem.book || "B1"}-${targetItem.lesson || "L1"}`;
+
+            // 重置麥克風按鈕
+            resetMicButtonUI();
+
+            // 啟用麥克風按鈕點擊
+            document.getElementById('pronounce-mic-btn').disabled = false;
+
+            // 自動播放發音引導學生
+            setTimeout(() => {
+                playPronounceTargetSound();
+            }, 500);
+        }
+
+        function playPronounceTargetSound() {
+            speak(pronunciationGameData.correctWord);
+        }
+
+        // 切換口說錄音狀態
+        function toggleSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast("您的瀏覽器不支援語音辨識功能，請使用 Chrome、Edge 或 Safari！", "error");
+                return;
+            }
+
+            if (isSpeechRecognitionActive) {
+                stopSpeechRecognitionGracefully();
+            } else {
+                startSpeechRecognition();
+            }
+        }
+
+        // 啟動語音辨識
+        function startSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            speechRecognitionInstance = new SpeechRecognition();
+            
+            speechRecognitionInstance.lang = 'en-US';
+            speechRecognitionInstance.interimResults = false;
+            speechRecognitionInstance.maxAlternatives = 1;
+
+            // 啟動事件
+            speechRecognitionInstance.onstart = function() {
+                isSpeechRecognitionActive = true;
+                setMicRecordingUI(true);
+                document.getElementById('pronounce-status-text').textContent = "正在聆聽中...請大聲朗讀單字！";
+                document.getElementById('pronounce-status-text').className = "text-rose-500 text-xs font-black animate-pulse";
+            };
+
+            // 辨識錯誤
+            speechRecognitionInstance.onerror = function(event) {
+                console.error("Speech recognition error:", event.error);
+                if (event.error === 'not-allowed') {
+                    showToast("無法存取麥克風，請在網頁瀏覽器權限中設定允許麥克風權限！", "error");
+                } else if (event.error === 'no-speech') {
+                    showToast("沒有偵測到您的聲音，請靠近麥克風再試一次！", "info");
+                }
+                stopSpeechRecognitionGracefully();
+            };
+
+            // 結束辨識
+            speechRecognitionInstance.onend = function() {
+                isSpeechRecognitionActive = false;
+                setMicRecordingUI(false);
+            };
+
+            // 收到辨識結果
+            speechRecognitionInstance.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                processPronunciationResult(transcript);
+            };
+
+            try {
+                speechRecognitionInstance.start();
+            } catch (err) {
+                console.error("Failed to start speech recognition:", err);
+                stopSpeechRecognitionGracefully();
+            }
+        }
+
+        // 溫和停止辨識
+        function stopSpeechRecognitionGracefully() {
+            if (speechRecognitionInstance) {
+                try {
+                    speechRecognitionInstance.stop();
+                } catch (e) {}
+                speechRecognitionInstance = null;
+            }
+            isSpeechRecognitionActive = false;
+            setMicRecordingUI(false);
+            const statusEl = document.getElementById('pronounce-status-text');
+            if (statusEl) {
+                statusEl.textContent = "點擊麥克風大聲唸出這個單字";
+                statusEl.className = "text-slate-400 text-xs font-semibold";
+            }
+        }
+
+        // 設定麥克風 UI
+        function setMicRecordingUI(active) {
+            const btn = document.getElementById('pronounce-mic-btn');
+            const icon = document.getElementById('pronounce-mic-icon');
+            if (!btn || !icon) return;
+
+            if (active) {
+                btn.className = "w-20 h-20 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-200 transition-all active:scale-95 border-4 border-white outline outline-4 outline-rose-200 recording-pulse";
+                icon.className = "fa-solid fa-waveform text-3xl animate-bounce";
+            } else {
+                btn.className = "w-20 h-20 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-100 transition-all active:scale-95 border-4 border-white outline outline-4 outline-rose-100 hover:outline-rose-200";
+                icon.className = "fa-solid fa-microphone text-3xl";
+            }
+        }
+
+        function resetMicButtonUI() {
+            setMicRecordingUI(false);
+        }
+
+        // 處理與判定發音結果
+        function processPronunciationResult(userVoiceText) {
+            const target = pronunciationGameData.correctWord.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+            const recognized = userVoiceText.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+
+            // 顯示 AI 偵測到的文字框
+            const transcriptBox = document.getElementById('pronounce-transcript-box');
+            const transcriptText = document.getElementById('pronounce-transcript-text');
+            transcriptText.textContent = userVoiceText;
+            transcriptBox.classList.remove('hidden');
+
+            const feedback = document.getElementById('pronounce-feedback');
+            const feedbackIcon = document.getElementById('pronounce-feedback-icon');
+            const feedbackText = document.getElementById('pronounce-feedback-text');
+            const feedbackBox = feedback.querySelector('div');
+
+            // 禁用麥克風避免重複錄製
+            document.getElementById('pronounce-mic-btn').disabled = true;
+
+            // 比對邏輯：字串精準相等 (不計標點與大小寫)
+            const isCorrect = recognized === target;
+            logAnswer(pronunciationGameData.correctWord, isCorrect);
+
+            if (isCorrect) {
+                pronunciationGameData.score += 10;
+                document.getElementById('pronounce-score').textContent = pronunciationGameData.score;
+
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500 animate-bounce"></i>';
+                feedbackText.textContent = "發音正確！咬字非常標準！";
+                
+                // 發出正確單字聲音
+                speak(pronunciationGameData.correctWord);
+            } else {
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
+                feedbackText.textContent = "發音有點偏差喔！請點擊左側示範多聽幾次。";
+            }
+
+            feedback.classList.remove('hidden');
+            document.getElementById('pronounce-status-text').textContent = isCorrect ? "挑戰成功！" : "再接再厲！";
+            document.getElementById('pronounce-status-text').className = isCorrect ? "text-emerald-500 text-xs font-bold" : "text-rose-500 text-xs font-bold";
+        }
+
+        function nextPronunciationQuestion() {
+            pronunciationGameData.currentIndex++;
+            if (pronunciationGameData.currentIndex < pronunciationGameData.shuffledList.length) {
+                loadPronunciationQuestion();
+            } else {
+                showGameOverModal(pronunciationGameData.score, pronunciationGameData.shuffledList.length);
+            }
+        }
+
+
+        // ==================== GAME OVER MODAL ====================
+        let gameOverReturnTimer = null;
+
+        function showGameOverModal(points, totalItems, title = "恭喜完成！") {
+            const modal = document.getElementById('game-over-modal');
+            const scoreSpan = document.getElementById('modal-score');
+            const masteredSpan = document.getElementById('modal-mastered');
+            const titleEl = document.getElementById('game-over-title');
+
+            if (gameOverReturnTimer) {
+                clearTimeout(gameOverReturnTimer);
+                gameOverReturnTimer = null;
+            }
+
+            titleEl.textContent = title;
+            scoreSpan.textContent = `+${points}`;
+            masteredSpan.textContent = `+${totalItems}`;
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.add('opacity-100');
+                document.getElementById('game-over-card').classList.remove('scale-90');
+                document.getElementById('game-over-card').classList.add('scale-100');
+            }, 50);
+
+            gameOverReturnTimer = setTimeout(() => {
+                closeGameOverModal();
+            }, 2200);
+        }
+
+        function closeGameOverModal() {
+            if (gameOverReturnTimer) {
+                clearTimeout(gameOverReturnTimer);
+                gameOverReturnTimer = null;
+            }
+
+            const modal = document.getElementById('game-over-modal');
+            modal.classList.remove('opacity-100');
+            document.getElementById('game-over-card').classList.remove('scale-100');
+            document.getElementById('game-over-card').classList.add('scale-90');
+
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                switchTab('dashboard');
+            }, 300);
+        }
+
+
+        // ==================== WINDOW ONLOAD ====================
+        window.onload = async function() {
+            if (!db) {
+                showToast('Supabase 套件沒有載入成功，註冊與登入暫時不可用。請檢查網路或用 Live Server 開啟。', 'error');
+                return;
+            }
+
+            const { data } = await db.auth.getSession();
+            if (data.session?.user) {
+                const { data: profile } = await db
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", data.session.user.id)
+                    .single();
+                if (profile) {
+                    await loginSuccess(mapProfile(profile));
+                }
+            }
+            window.speechSynthesis?.getVoices();
+        }
+    </script>
+</body>
+</html>
