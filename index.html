@@ -906,6 +906,15 @@
             };
         }
 
+        function getVocabKey(item) {
+            if (!item) return "";
+            return `${String(item.word || "").trim().toLowerCase()}::${String(item.translation || "").trim()}`;
+        }
+
+        function getProgressForItem(progress, item) {
+            return progress[getVocabKey(item)] || progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
+        }
+
         async function loadSavedVocab() {
             const { data, error } = await db
                 .from("vocabulary")
@@ -1010,22 +1019,23 @@
         }
 
         // ==================== 智慧單字答對記錄與熟記系統 ====================
-        async function logAnswer(word, isCorrect) {
+        async function logAnswer(item, isCorrect) {
             if (!currentUser || currentUser.role !== 'student') return;
             const username = currentUser.username;
+            const progressKey = typeof item === "string" ? item : getVocabKey(item);
             
             if (!studentProgress[username]) {
                 studentProgress[username] = {};
             }
-            if (!studentProgress[username][word]) {
-                studentProgress[username][word] = {
+            if (!studentProgress[username][progressKey]) {
+                studentProgress[username][progressKey] = {
                     correctCount: 0, // 累計答對次數 (用於判定 5 次減頻、8~10 次免測)
                     totalTested: 0,
                     correctAnswers: 0
                 };
             }
 
-            const prog = studentProgress[username][word];
+            const prog = studentProgress[username][progressKey];
             prog.totalTested++;
             if (isCorrect) {
                 prog.correctAnswers++;
@@ -1033,14 +1043,14 @@
                 
                 // 自動更新系統 Mastering 緩存同步
                 if (prog.correctCount >= 8) {
-                    masteredWords.add(word);
-                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word }, { onConflict: "user_id,word" });
+                    masteredWords.add(progressKey);
+                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word: progressKey }, { onConflict: "user_id,word" });
                 }
             }
             
             await db.from("student_progress").upsert({
                 user_id: currentUser.id,
-                word,
+                word: progressKey,
                 correct_count: prog.correctCount,
                 total_tested: prog.totalTested,
                 correct_answers: prog.correctAnswers
@@ -1512,7 +1522,7 @@
             });
 
             sortedVocab.forEach(item => {
-                const wordProg = progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
+                const wordProg = getProgressForItem(progress, item);
                 const correctRate = wordProg.totalTested > 0 ? Math.round((wordProg.correctAnswers / wordProg.totalTested) * 100) : 0;
                 
                 let statusBadge = '';
@@ -1564,7 +1574,8 @@
             grid.innerHTML = '';
 
             vocabulary.forEach((item, index) => {
-                const isMastered = masteredWords.has(item.word);
+                const itemKey = getVocabKey(item);
+                const isMastered = masteredWords.has(itemKey) || masteredWords.has(item.word);
                 const card = document.createElement('div');
                 card.className = `bg-white border rounded-3xl p-5 hover:shadow-md transition-all flex flex-col justify-between ${isMastered ? 'border-emerald-200 shadow-emerald-50 bg-emerald-50/10' : 'border-slate-100'}`;
                 
@@ -1573,7 +1584,7 @@
                         <div class="flex justify-between items-start mb-3">
                             <span class="text-[10px] font-bold text-indigo-500 tracking-wide uppercase">${item.book || "B1"}-${item.lesson || "L1"} 字卡</span>
                             <div class="flex items-center gap-2">
-                                <button onclick="toggleWordMastered('${item.word}')" class="text-sm ${isMastered ? 'text-emerald-500' : 'text-slate-300'} hover:scale-110 transition-all" title="${isMastered ? '已掌握' : '標記為已掌握'}">
+                                <button onclick="toggleWordMastered(${index})" class="text-sm ${isMastered ? 'text-emerald-500' : 'text-slate-300'} hover:scale-110 transition-all" title="${isMastered ? '已掌握' : '標記為已掌握'}">
                                     <i class="fa-solid fa-circle-check"></i>
                                 </button>
                                 <button onclick="speak('${item.word}')" class="text-sky-500 hover:text-sky-600 bg-sky-50 w-7 h-7 rounded-lg flex items-center justify-center hover:scale-110 transition-all">
@@ -1598,30 +1609,40 @@
             });
         }
 
-        async function toggleWordMastered(word) {
-            if (masteredWords.has(word)) {
-                masteredWords.delete(word);
+        async function toggleWordMastered(index) {
+            const item = vocabulary[index];
+            const word = item.word;
+            const itemKey = getVocabKey(item);
+            const legacyKey = word;
+            const isMastered = masteredWords.has(itemKey) || masteredWords.has(legacyKey);
+
+            if (isMastered) {
+                masteredWords.delete(itemKey);
+                masteredWords.delete(legacyKey);
                 if (currentUser) {
-                    await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", word);
+                    await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", itemKey);
+                    if (itemKey !== legacyKey) {
+                        await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", legacyKey);
+                    }
                 }
-                if (currentUser && studentProgress[currentUser.username]?.[word]) {
-                    studentProgress[currentUser.username][word].correctCount = 0;
+                if (currentUser && studentProgress[currentUser.username]?.[itemKey]) {
+                    studentProgress[currentUser.username][itemKey].correctCount = 0;
                     await saveProgressToStorage();
                 }
-                showToast(`已將 "${word}" 移出熟記清單`, 'info');
+                showToast(`已將 "${word}（${item.translation}）" 移出熟記清單`, 'info');
             } else {
-                masteredWords.add(word);
+                masteredWords.add(itemKey);
                 if (currentUser) {
                     if (!studentProgress[currentUser.username]) studentProgress[currentUser.username] = {};
-                    if (!studentProgress[currentUser.username][word]) {
-                        studentProgress[currentUser.username][word] = { correctCount: 8, totalTested: 1, correctAnswers: 1 };
+                    if (!studentProgress[currentUser.username][itemKey]) {
+                        studentProgress[currentUser.username][itemKey] = { correctCount: 8, totalTested: 1, correctAnswers: 1 };
                     } else {
-                        studentProgress[currentUser.username][word].correctCount = 8;
+                        studentProgress[currentUser.username][itemKey].correctCount = 8;
                     }
-                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word }, { onConflict: "user_id,word" });
+                    await db.from("mastered_words").upsert({ user_id: currentUser.id, word: itemKey }, { onConflict: "user_id,word" });
                     await saveProgressToStorage();
                 }
-                showToast(`恭喜掌握 "${word}"！`, 'success');
+                showToast(`恭喜掌握 "${word}（${item.translation}）"！`, 'success');
             }
             updateMasteredBadge();
             renderVocabList();
@@ -1703,6 +1724,15 @@
 
             if (editIndex !== "") {
                 const original = vocabulary[parseInt(editIndex)];
+                const duplicateMeaning = vocabulary.some((item, index) => {
+                    return index !== parseInt(editIndex)
+                        && item.word.toLowerCase() === wordLower
+                        && item.translation.trim() === translation;
+                });
+                if (duplicateMeaning) {
+                    showToast("此單字與中文義項已經存在，請改成不同的意思或例句。", "error");
+                    return;
+                }
                 const { data, error } = await db
                     .from("vocabulary")
                     .update(dbPayload)
@@ -1717,8 +1747,8 @@
                 vocabulary[parseInt(editIndex)] = mapVocabRow(data);
                 showToast(`成功更新單字卡：${word}`);
             } else {
-                if (vocabulary.some(item => item.word.toLowerCase() === wordLower)) {
-                    showToast("此單字已經存在於單字庫中！", "error");
+                if (vocabulary.some(item => item.word.toLowerCase() === wordLower && item.translation.trim() === translation)) {
+                    showToast("此單字與中文義項已經存在；若是一字多義，請輸入不同的中文意思。", "error");
                     return;
                 }
                 const { data, error } = await db
@@ -1754,7 +1784,9 @@
         }
 
         async function deleteVocabulary(index) {
-            const word = vocabulary[index].word;
+            const item = vocabulary[index];
+            const word = item.word;
+            const itemKey = getVocabKey(item);
             const { error } = await db.from("vocabulary").delete().eq("id", vocabulary[index].id);
             if (error) {
                 console.error(error);
@@ -1763,12 +1795,16 @@
             }
             vocabulary.splice(index, 1);
             masteredWords.delete(word);
+            masteredWords.delete(itemKey);
             if (currentUser) {
-                await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", word);
+                await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", itemKey);
+                if (itemKey !== word) {
+                    await db.from("mastered_words").delete().eq("user_id", currentUser.id).eq("word", word);
+                }
             }
             updateMasteredBadge();
             renderAdminList();
-            showToast(`已刪除單字：${word}`, 'info');
+            showToast(`已刪除單字：${word}（${item.translation}）`, 'info');
         }
 
         function resetAdminForm() {
@@ -1788,7 +1824,7 @@
                 book: item.book,
                 lesson: item.lesson
             }));
-            const { error } = await db.from("vocabulary").upsert(rows, { onConflict: "word" });
+            const { error } = await db.from("vocabulary").upsert(rows, { onConflict: "word,translation" });
             if (error) {
                 console.error(error);
                 showToast("還原預設單字失敗，請確認管理員權限。", "error");
@@ -1824,7 +1860,7 @@
             });
 
             availableWords = availableWords.filter(item => {
-                const wordProg = progress[item.word] || { correctCount: 0 };
+                const wordProg = getProgressForItem(progress, item);
                 return wordProg.correctCount < 8; 
             });
 
@@ -1842,7 +1878,7 @@
 
             function applySpacedRepetitionFilter(pool) {
                 return pool.filter(item => {
-                    const wordProg = progress[item.word] || { correctCount: 0 };
+                    const wordProg = getProgressForItem(progress, item);
                     if (wordProg.correctCount >= 5 && wordProg.correctCount <= 7) {
                         return Math.random() < 0.25; 
                     }
@@ -1886,6 +1922,7 @@
             currentIndex: 0,
             score: 0,
             correctWord: "",
+            correctItem: null,
             shuffledList: []
         };
 
@@ -1916,6 +1953,7 @@
 
             const targetItem = listeningGameData.shuffledList[index];
             listeningGameData.correctWord = targetItem.word;
+            listeningGameData.correctItem = targetItem;
 
             const distractors = vocabulary
                 .filter(item => item.word !== targetItem.word)
@@ -1930,7 +1968,7 @@
             options.forEach(opt => {
                 const btn = document.createElement('button');
                 btn.className = "game-opt-btn bg-slate-50 border-2 border-slate-100 hover:border-sky-300 hover:bg-sky-50/20 active:scale-98 p-4 rounded-2xl font-bold text-slate-800 transition-all text-sm md:text-base flex flex-col items-center justify-center text-center";
-                btn.onclick = () => selectListeningAnswer(opt.word, btn);
+                btn.onclick = () => selectListeningAnswer(opt, btn);
                 btn.innerHTML = `
                     <span class="tracking-wide">${opt.word}</span>
                     <span class="text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
@@ -1947,7 +1985,7 @@
             speak(listeningGameData.correctWord);
         }
 
-        function selectListeningAnswer(selectedWord, selectedBtn) {
+        function selectListeningAnswer(selectedItem, selectedBtn) {
             const buttons = document.querySelectorAll('.game-opt-btn');
             buttons.forEach(btn => btn.disabled = true);
 
@@ -1956,9 +1994,9 @@
             const feedbackText = document.getElementById('listen-feedback-text');
             const feedbackBox = feedback.querySelector('div');
 
-            const isCorrect = selectedWord === listeningGameData.correctWord;
+            const isCorrect = getVocabKey(selectedItem) === getVocabKey(listeningGameData.correctItem);
             
-            logAnswer(listeningGameData.correctWord, isCorrect);
+            logAnswer(listeningGameData.correctItem, isCorrect);
 
             if (isCorrect) {
                 listeningGameData.score += 10;
@@ -2005,6 +2043,7 @@
             currentIndex: 0,
             shuffledList: [],
             correctWord: "",
+            correctItem: null,
             userAnswer: [],
             combo: 0
         };
@@ -2033,6 +2072,7 @@
 
             const targetItem = spellingGameData.shuffledList[spellingGameData.currentIndex];
             spellingGameData.correctWord = targetItem.word;
+            spellingGameData.correctItem = targetItem;
             spellingGameData.userAnswer = [];
 
             document.getElementById('spell-translation-hint').textContent = targetItem.translation;
@@ -2124,7 +2164,7 @@
 
             const isCorrect = userSpelled.toLowerCase() === correctSpelling.toLowerCase();
             
-            logAnswer(correctSpelling, isCorrect);
+            logAnswer(spellingGameData.correctItem, isCorrect);
 
             document.querySelectorAll('.letter-bubble').forEach(b => b.disabled = true);
 
@@ -2170,6 +2210,7 @@
             currentIndex: 0,
             shuffledList: [],
             correctWord: "",
+            correctItem: null,
             score: 0
         };
 
@@ -2200,6 +2241,7 @@
 
             const targetItem = sentenceGameData.shuffledList[sentenceGameData.currentIndex];
             sentenceGameData.correctWord = targetItem.word;
+            sentenceGameData.correctItem = targetItem;
 
             const escapedWord = targetItem.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
             const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
@@ -2226,7 +2268,8 @@
             options.forEach(opt => {
                 const btn = document.createElement('button');
                 btn.className = "sentence-opt-btn bg-slate-50 border-2 border-slate-100 hover:border-emerald-300 hover:bg-emerald-50/20 active:scale-98 p-4 rounded-2xl font-bold text-slate-800 transition-all text-sm flex flex-col justify-center items-center text-center";
-                btn.onclick = () => selectSentenceAnswer(opt.word, btn);
+                btn.dataset.vocabKey = getVocabKey(opt);
+                btn.onclick = () => selectSentenceAnswer(opt, btn);
                 btn.innerHTML = `
                     <span class="tracking-wide text-base">${opt.word}</span>
                     <span class="text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
@@ -2239,7 +2282,7 @@
             document.getElementById('sentence-translation-hint-box').classList.toggle('hidden');
         }
 
-        function selectSentenceAnswer(selectedWord, selectedBtn) {
+        function selectSentenceAnswer(selectedItem, selectedBtn) {
             const buttons = document.querySelectorAll('.sentence-opt-btn');
             buttons.forEach(btn => btn.disabled = true);
 
@@ -2248,9 +2291,9 @@
             const feedbackText = document.getElementById('sentence-feedback-text');
             const feedbackBox = feedback.querySelector('div');
 
-            const isCorrect = selectedWord.toLowerCase() === sentenceGameData.correctWord.toLowerCase();
+            const isCorrect = getVocabKey(selectedItem) === getVocabKey(sentenceGameData.correctItem);
             
-            logAnswer(sentenceGameData.correctWord, isCorrect);
+            logAnswer(sentenceGameData.correctItem, isCorrect);
 
             document.getElementById('sentence-translation-hint-box').classList.remove('hidden');
             document.getElementById('sentence-hint-btn').classList.add('hidden');
@@ -2272,7 +2315,7 @@
                 selectedBtn.classList.add('bg-rose-50', 'border-rose-500', 'text-rose-700');
                 
                 buttons.forEach(btn => {
-                    if (btn.querySelector('span').textContent.trim().toLowerCase() === sentenceGameData.correctWord.toLowerCase()) {
+                    if (btn.dataset.vocabKey === getVocabKey(sentenceGameData.correctItem)) {
                         btn.classList.add('bg-emerald-50/50', 'border-emerald-300', 'text-emerald-700');
                     }
                 });
@@ -2324,13 +2367,15 @@
                     id: `en-${index}`,
                     pairId: index,
                     text: item.word,
-                    lang: 'en'
+                    lang: 'en',
+                    item
                 });
                 cards.push({
                     id: `zh-${index}`,
                     pairId: index,
                     text: item.translation,
-                    lang: 'zh'
+                    lang: 'zh',
+                    item
                 });
             });
 
@@ -2393,10 +2438,11 @@
                         front2.style.borderColor = '#22c55e';
                         front2.style.color = '#15803d';
 
-                        const englishWord = first.data.lang === 'en' ? first.data.text : second.data.text;
+                        const matchedItem = first.data.item || second.data.item;
+                        const englishWord = matchedItem.word;
                         speak(englishWord);
 
-                        logAnswer(englishWord, true);
+                        logAnswer(matchedItem, true);
 
                         matchingGameData.matchedPairs++;
                         document.getElementById('match-pairs-count').textContent = matchingGameData.matchedPairs;
@@ -2445,6 +2491,7 @@
             currentIndex: 0,
             score: 0,
             correctWord: "",
+            correctItem: null,
             shuffledList: []
         };
 
@@ -2486,6 +2533,7 @@
 
             const targetItem = pronunciationGameData.shuffledList[index];
             pronunciationGameData.correctWord = targetItem.word;
+            pronunciationGameData.correctItem = targetItem;
 
             // 渲染資訊
             document.getElementById('pronounce-target-word').textContent = targetItem.word;
@@ -2628,7 +2676,7 @@
 
             // 比對邏輯：字串精準相等 (不計標點與大小寫)
             const isCorrect = recognized === target;
-            logAnswer(pronunciationGameData.correctWord, isCorrect);
+            logAnswer(pronunciationGameData.correctItem, isCorrect);
 
             if (isCorrect) {
                 pronunciationGameData.score += 10;
