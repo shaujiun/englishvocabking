@@ -2229,7 +2229,8 @@
             shuffledList: [],
             correctWord: "",
             correctItem: null,
-            score: 0
+            score: 0,
+            hintTimer: null
         };
 
         function startSentenceGame() {
@@ -2253,7 +2254,12 @@
         function loadSentenceQuestion() {
             document.getElementById('sentence-feedback').classList.add('hidden');
             document.getElementById('sentence-translation-hint-box').classList.add('hidden');
-            document.getElementById('sentence-hint-btn').classList.remove('hidden');
+            if (sentenceGameData.hintTimer) {
+                clearTimeout(sentenceGameData.hintTimer);
+                sentenceGameData.hintTimer = null;
+            }
+            const hintBtn = document.getElementById('sentence-hint-btn');
+            hintBtn.classList.add('hidden');
 
             document.getElementById('sentence-current-index').textContent = sentenceGameData.currentIndex + 1;
 
@@ -2272,6 +2278,10 @@
 
             document.getElementById('sentence-question-text').textContent = maskedSentence;
             document.getElementById('sentence-translation-hint-box').textContent = targetItem.sentenceTranslation;
+            sentenceGameData.hintTimer = setTimeout(() => {
+                hintBtn.classList.remove('hidden');
+                sentenceGameData.hintTimer = null;
+            }, 3000);
 
             const distractors = vocabulary
                 .filter(item => item.word.toLowerCase() !== targetItem.word.toLowerCase())
@@ -2290,7 +2300,7 @@
                 btn.onclick = () => selectSentenceAnswer(opt, btn);
                 btn.innerHTML = `
                     <span class="tracking-wide text-base">${opt.word}</span>
-                    <span class="text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
+                    <span class="sentence-option-translation hidden text-xs text-slate-400 font-medium mt-1">(${opt.translation})</span>
                 `;
                 optionsGrid.appendChild(btn);
             });
@@ -2302,7 +2312,10 @@
 
         function selectSentenceAnswer(selectedItem, selectedBtn) {
             const buttons = document.querySelectorAll('.sentence-opt-btn');
-            buttons.forEach(btn => btn.disabled = true);
+            buttons.forEach(btn => {
+                btn.disabled = true;
+                btn.querySelector('.sentence-option-translation')?.classList.remove('hidden');
+            });
 
             const feedback = document.getElementById('sentence-feedback');
             const feedbackIcon = document.getElementById('sentence-feedback-icon');
@@ -2313,6 +2326,10 @@
             
             logAnswer(sentenceGameData.correctItem, isCorrect);
 
+            if (sentenceGameData.hintTimer) {
+                clearTimeout(sentenceGameData.hintTimer);
+                sentenceGameData.hintTimer = null;
+            }
             document.getElementById('sentence-translation-hint-box').classList.remove('hidden');
             document.getElementById('sentence-hint-btn').classList.add('hidden');
 
