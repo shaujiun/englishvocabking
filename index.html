@@ -1430,29 +1430,76 @@
         }
 
         // ==================== TTS SPEECH FUNCTION ====================
-        function speak(text) {
-            if (!('speechSynthesis' in window)) {
-                showToast("此瀏覽器不支援發音功能", "error");
-                return;
-            }
-            window.speechSynthesis.cancel();
-            
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'en-US';
-            utterance.rate = 0.63; 
-            utterance.pitch = 1.0; 
-            
-            const voices = window.speechSynthesis.getVoices();
-            const usVoice = voices.find(v => v.lang.includes('en-US') || v.lang.includes('en_US'));
-            if (usVoice) utterance.voice = usVoice;
+        let cachedSpeechVoices = [];
+        let speechWarmupDone = false;
 
-            window.speechSynthesis.speak(utterance);
+        function isSpeechSupported() {
+            return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
         }
 
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.onvoiceschanged = function() {
-                window.speechSynthesis.getVoices();
+        function getSpeechUnsupportedMessage() {
+            const ua = navigator.userAgent || "";
+            const isInAppBrowser = /Line|FBAN|FBAV|Instagram|MicroMessenger/i.test(ua);
+            if (isInAppBrowser) {
+                return "此內建瀏覽器不支援發音功能，請改用 Safari、Chrome 或 Edge 開啟。";
+            }
+            return "此瀏覽器不支援內建發音功能，請改用 Safari、Chrome 或 Edge。";
+        }
+
+        function refreshSpeechVoices() {
+            if (!isSpeechSupported()) return [];
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                cachedSpeechVoices = voices;
+            }
+            return cachedSpeechVoices;
+        }
+
+        function warmUpSpeechSynthesis() {
+            if (!isSpeechSupported() || speechWarmupDone) return;
+            speechWarmupDone = true;
+            refreshSpeechVoices();
+            try {
+                window.speechSynthesis.resume();
+            } catch (e) {}
+        }
+
+        function speak(text) {
+            if (!isSpeechSupported()) {
+                showToast(getSpeechUnsupportedMessage(), "error");
+                return;
+            }
+
+            warmUpSpeechSynthesis();
+
+            const speakNow = () => {
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.63; 
+                utterance.pitch = 1.0; 
+
+                const voices = refreshSpeechVoices();
+                const usVoice = voices.find(v => v.lang.includes('en-US') || v.lang.includes('en_US'))
+                    || voices.find(v => v.lang.toLowerCase().startsWith('en'));
+                if (usVoice) utterance.voice = usVoice;
+
+                window.speechSynthesis.speak(utterance);
             };
+
+            if (refreshSpeechVoices().length === 0) {
+                setTimeout(speakNow, 150);
+            } else {
+                speakNow();
+            }
+        }
+
+        if (isSpeechSupported()) {
+            window.speechSynthesis.onvoiceschanged = refreshSpeechVoices;
+            ['pointerdown', 'touchstart', 'click'].forEach(eventName => {
+                document.addEventListener(eventName, warmUpSpeechSynthesis, { once: true, passive: true });
+            });
         }
 
         // ==================== DASHBOARD & QUICK CARDS ====================
