@@ -621,7 +621,7 @@
                             進度: <span id="spell-current-index" class="text-amber-600">1</span>/<span id="spell-total-count">20</span>
                         </div>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
-                            <i class="fa-solid fa-fire text-orange-500"></i> 連擊: <span id="spell-combo">0</span>
+                            <i class="fa-solid fa-crown text-amber-400"></i> 得分: <span id="spell-score">0</span>
                         </div>
                     </div>
 
@@ -652,10 +652,10 @@
 
                     <!-- 拼字控制按鈕 -->
                     <div class="flex justify-center gap-4">
-                        <button onclick="clearSpellingInput()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2 px-4 rounded-xl text-xs transition-all">
+                        <button id="spell-clear-btn" onclick="clearSpellingInput()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2 px-4 rounded-xl text-xs transition-all">
                             <i class="fa-solid fa-trash-can mr-1"></i> 全部清除
                         </button>
-                        <button onclick="checkSpellingAnswer()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-md shadow-amber-100 transition-all">
+                        <button id="spell-submit-btn" onclick="checkSpellingAnswer()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-md shadow-amber-100 transition-all">
                             <i class="fa-solid fa-circle-check mr-1"></i> 送出答案
                         </button>
                     </div>
@@ -2045,7 +2045,8 @@
             correctWord: "",
             correctItem: null,
             userAnswer: [],
-            combo: 0
+            score: 0,
+            answered: false
         };
 
         function startSpellingGame() {
@@ -2058,10 +2059,11 @@
             
             spellingGameData.shuffledList = gamePool;
             spellingGameData.currentIndex = 0;
-            spellingGameData.combo = 0;
+            spellingGameData.score = 0;
+            spellingGameData.answered = false;
 
             document.getElementById('spell-total-count').textContent = spellingGameData.shuffledList.length;
-            document.getElementById('spell-combo').textContent = "0";
+            document.getElementById('spell-score').textContent = "0";
 
             loadSpellingQuestion();
         }
@@ -2069,6 +2071,14 @@
         function loadSpellingQuestion() {
             document.getElementById('spell-feedback').classList.add('hidden');
             document.getElementById('spell-current-index').textContent = spellingGameData.currentIndex + 1;
+            spellingGameData.answered = false;
+
+            const submitBtn = document.getElementById('spell-submit-btn');
+            const clearBtn = document.getElementById('spell-clear-btn');
+            submitBtn.disabled = false;
+            clearBtn.disabled = false;
+            submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+            clearBtn.classList.remove('opacity-60', 'cursor-not-allowed');
 
             const targetItem = spellingGameData.shuffledList[spellingGameData.currentIndex];
             spellingGameData.correctWord = targetItem.word;
@@ -2153,6 +2163,8 @@
         }
 
         function checkSpellingAnswer() {
+            if (spellingGameData.answered) return;
+
             const slots = Array.from(document.getElementById('spell-slots-container').children);
             const userSpelled = slots.map(slot => slot.textContent).join('').trim();
             const correctSpelling = spellingGameData.correctWord;
@@ -2163,30 +2175,33 @@
             const feedbackBox = feedback.querySelector('div');
 
             const isCorrect = userSpelled.toLowerCase() === correctSpelling.toLowerCase();
+            spellingGameData.answered = true;
             
             logAnswer(spellingGameData.correctItem, isCorrect);
 
             document.querySelectorAll('.letter-bubble').forEach(b => b.disabled = true);
+            const submitBtn = document.getElementById('spell-submit-btn');
+            const clearBtn = document.getElementById('spell-clear-btn');
+            submitBtn.disabled = true;
+            clearBtn.disabled = true;
+            submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+            clearBtn.classList.add('opacity-60', 'cursor-not-allowed');
 
             if (isCorrect) {
-                spellingGameData.combo++;
-                document.getElementById('spell-combo').textContent = spellingGameData.combo;
+                spellingGameData.score += 10;
+                document.getElementById('spell-score').textContent = spellingGameData.score;
                 
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles text-emerald-500 animate-bounce"></i>';
                 feedbackText.textContent = "太神奇了！單字拼寫完全正確！";
                 speak(correctSpelling);
             } else {
-                spellingGameData.combo = 0;
-                document.getElementById('spell-combo').textContent = "0";
-
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
                 feedbackText.textContent = `喔不！正確拼寫是: ${correctSpelling}`;
                 
-                slots.forEach((slot, index) => {
+                slots.forEach(slot => {
                     if (!slot.dataset.fixed) {
-                        slot.textContent = correctSpelling[index];
                         slot.className = "w-9 h-10 border-b-2 border-rose-300 flex items-center justify-center text-lg font-black text-rose-600";
                     }
                 });
@@ -2200,7 +2215,7 @@
             if (spellingGameData.currentIndex < spellingGameData.shuffledList.length) {
                 loadSpellingQuestion();
             } else {
-                showGameOverModal(spellingGameData.combo * 15, spellingGameData.shuffledList.length);
+                showGameOverModal(spellingGameData.score, spellingGameData.shuffledList.length);
             }
         }
 
