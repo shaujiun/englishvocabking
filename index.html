@@ -2700,7 +2700,7 @@
             
             speechRecognitionInstance.lang = 'en-US';
             speechRecognitionInstance.interimResults = false;
-            speechRecognitionInstance.maxAlternatives = 1;
+            speechRecognitionInstance.maxAlternatives = 5;
 
             // 啟動事件
             speechRecognitionInstance.onstart = function() {
@@ -2729,8 +2729,11 @@
 
             // 收到辨識結果
             speechRecognitionInstance.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                processPronunciationResult(transcript);
+                const alternatives = Array.from(event.results[0]).map(result => ({
+                    transcript: result.transcript,
+                    confidence: result.confidence || 0
+                }));
+                processPronunciationResult(alternatives);
             };
 
             try {
@@ -2777,10 +2780,112 @@
             setMicRecordingUI(false);
         }
 
+        function normalizeSpeechText(text) {
+            return String(text || "")
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ");
+        }
+
+        function getEditDistance(a, b) {
+            const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+            for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+            for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+
+            for (let i = 1; i <= a.length; i++) {
+                for (let j = 1; j <= b.length; j++) {
+                    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                    dp[i][j] = Math.min(
+                        dp[i - 1][j] + 1,
+                        dp[i][j - 1] + 1,
+                        dp[i - 1][j - 1] + cost
+                    );
+                }
+            }
+            return dp[a.length][b.length];
+        }
+
+        function getTextSimilarity(a, b) {
+            const left = normalizeSpeechText(a);
+            const right = normalizeSpeechText(b);
+            const maxLength = Math.max(left.length, right.length);
+            if (maxLength === 0) return 0;
+            return 1 - (getEditDistance(left, right) / maxLength);
+        }
+
+        function isPronunciationAcceptable(target, recognized, isExact, containsTarget) {
+            if (isExact) return true;
+            if (!target || !recognized) return false;
+
+            const targetIsPhrase = target.includes(" ");
+            if (targetIsPhrase) {
+                if (containsTarget) return true;
+                const compactTarget = target.replace(/\s/g, "");
+                const compactRecognized = recognized.replace(/\s/g, "");
+                const distance = getEditDistance(compactTarget, compactRecognized);
+                const similarity = 1 - (distance / Math.max(compactTarget.length, compactRecognized.length));
+                return distance <= Math.max(2, Math.floor(compactTarget.length * 0.22)) && similarity >= 0.82;
+            }
+
+            const distance = getEditDistance(target, recognized);
+            const similarity = 1 - (distance / Math.max(target.length, recognized.length));
+            const lengthDiff = Math.abs(target.length - recognized.length);
+            const sameFirstSound = target[0] === recognized[0];
+            const sameLastSound = target[target.length - 1] === recognized[recognized.length - 1];
+
+            if (target.length <= 4) {
+                return distance <= 1 && lengthDiff === 0 && sameFirstSound && sameLastSound && similarity >= 0.78;
+            }
+
+            if (target.length <= 6) {
+                return distance <= 1 && lengthDiff <= 1 && sameFirstSound && sameLastSound && similarity >= 0.82;
+            }
+
+            return distance <= 2 && lengthDiff <= 2 && sameFirstSound && sameLastSound && similarity >= 0.78;
+        }
+
+        function getPronunciationMatch(targetText, alternatives) {
+            const target = normalizeSpeechText(targetText);
+
+            let best = {
+                transcript: alternatives[0]?.transcript || "",
+                normalized: normalizeSpeechText(alternatives[0]?.transcript || ""),
+                similarity: 0,
+                confidence: alternatives[0]?.confidence || 0,
+                isCorrect: false,
+                isExact: false
+            };
+
+            alternatives.forEach(alt => {
+                const normalized = normalizeSpeechText(alt.transcript);
+                const exact = normalized === target;
+                const containsTarget = target.length >= 3 && new RegExp(`(^|\\s)${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`).test(normalized);
+                const similarity = exact || containsTarget ? 1 : getTextSimilarity(target, normalized);
+                const isAcceptable = isPronunciationAcceptable(target, normalized, exact, containsTarget);
+
+                if (similarity > best.similarity) {
+                    best = {
+                        transcript: alt.transcript,
+                        normalized,
+                        similarity,
+                        confidence: alt.confidence || 0,
+                        isCorrect: isAcceptable,
+                        isExact: exact || containsTarget
+                    };
+                }
+            });
+
+            return best;
+        }
+
         // 處理與判定發音結果
-        function processPronunciationResult(userVoiceText) {
-            const target = pronunciationGameData.correctWord.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
-            const recognized = userVoiceText.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+        function processPronunciationResult(speechAlternatives) {
+            const alternatives = Array.isArray(speechAlternatives)
+                ? speechAlternatives
+                : [{ transcript: speechAlternatives, confidence: 0 }];
+            const bestMatch = getPronunciationMatch(pronunciationGameData.correctWord, alternatives);
+            const userVoiceText = bestMatch.transcript || alternatives[0]?.transcript || "";
 
             // 顯示 AI 偵測到的文字框
             const transcriptBox = document.getElementById('pronounce-transcript-box');
@@ -2796,8 +2901,7 @@
             // 禁用麥克風避免重複錄製
             document.getElementById('pronounce-mic-btn').disabled = true;
 
-            // 比對邏輯：字串精準相等 (不計標點與大小寫)
-            const isCorrect = recognized === target;
+            const isCorrect = bestMatch.isCorrect;
             logAnswer(pronunciationGameData.correctItem, isCorrect);
 
             if (isCorrect) {
@@ -2806,7 +2910,7 @@
 
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500 animate-bounce"></i>';
-                feedbackText.textContent = "發音正確！咬字非常標準！";
+                feedbackText.textContent = bestMatch.isExact ? "發音正確！咬字非常標準！" : "發音接近正確，系統判定通過！";
                 
                 // 發出正確單字聲音
                 speak(pronunciationGameData.correctWord);
