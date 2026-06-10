@@ -911,6 +911,43 @@
             return progress[getVocabKey(item)] || progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
         }
 
+        function escapeRegExp(text) {
+            return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+
+        function getVocabSentenceRegex(phrase) {
+            const normalizedPhrase = String(phrase || "").trim().replace(/\s+/g, " ");
+            const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
+            const wildcard = "[a-z0-9'-]+(?:\\s+[a-z0-9'-]+){0,3}";
+
+            const pattern = normalizedPhrase
+                .split(/(?:\.{3}|…)/)
+                .map(part => escapeRegExp(part.trim()).replace(/\s+/g, "\\s+"))
+                .filter(Boolean)
+                .join(`\\s+${wildcard}\\s+`);
+
+            if (!pattern) return null;
+
+            if (hasWildcard) {
+                return new RegExp(`(^|[^a-z0-9])(${pattern})(?=$|[^a-z0-9])`, "i");
+            }
+
+            return new RegExp(`(^|[^a-z0-9])(${pattern})(?=$|[^a-z0-9])`, "i");
+        }
+
+        function sentenceContainsVocabPhrase(sentence, phrase) {
+            const regex = getVocabSentenceRegex(phrase);
+            return regex ? regex.test(String(sentence || "").toLowerCase()) : false;
+        }
+
+        function maskVocabPhraseInSentence(sentence, phrase) {
+            const regex = getVocabSentenceRegex(phrase);
+            if (!regex) return sentence;
+            return String(sentence || "").replace(new RegExp(regex.source, "i"), (match, prefix, matchedPhrase) => {
+                return `${prefix}_______`;
+            });
+        }
+
         async function loadSavedVocab() {
             const { data, error } = await db
                 .from("vocabulary")
@@ -1793,8 +1830,7 @@
             const editIndex = document.getElementById('edit-index').value;
 
             const wordLower = word.toLowerCase();
-            const sentenceLower = sentence.toLowerCase();
-            if (!sentenceLower.includes(wordLower)) {
+            if (!sentenceContainsVocabPhrase(sentence, word)) {
                 showToast(`例句中找不到對應的單字 "${word}"，請再次確認拼寫！`, 'error');
                 return;
             }
@@ -2354,11 +2390,8 @@
             sentenceGameData.correctWord = targetItem.word;
             sentenceGameData.correctItem = targetItem;
 
-            const escapedWord = targetItem.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
-            
-            let maskedSentence = targetItem.sentence.replace(regex, "_______");
-            
+            let maskedSentence = maskVocabPhraseInSentence(targetItem.sentence, targetItem.word);
+
             if (!maskedSentence.includes("_______")) {
                 maskedSentence = targetItem.sentence.replace(targetItem.word, "_______");
             }
