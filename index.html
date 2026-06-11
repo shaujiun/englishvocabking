@@ -2217,13 +2217,23 @@
             slotsContainer.innerHTML = '';
             
             for (let i = 0; i < targetItem.word.length; i++) {
+                if (targetItem.word.slice(i, i + 3) === '...') {
+                    const slot = document.createElement('div');
+                    slot.className = "w-12 h-10 border-b-2 border-transparent flex items-center justify-center mx-1 font-black text-slate-500 text-lg";
+                    slot.textContent = "...";
+                    slot.dataset.fixed = "true";
+                    slotsContainer.appendChild(slot);
+                    i += 2;
+                    continue;
+                }
+
                 const char = targetItem.word[i];
                 const slot = document.createElement('div');
                 if (char === ' ') {
                     slot.className = "w-6 h-10 border-b-2 border-transparent flex items-center justify-center mx-1 font-bold text-slate-300";
                     slot.textContent = " ";
                     slot.dataset.fixed = "true";
-                } else if (char === '-' || char === ';') {
+                } else if (char === '-' || char === ';' || char === '…') {
                     slot.className = "w-8 h-10 border-b-2 border-transparent flex items-center justify-center mx-1 font-bold text-slate-500 text-lg";
                     slot.textContent = char;
                     slot.dataset.fixed = "true";
