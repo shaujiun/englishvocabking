@@ -223,6 +223,9 @@
                         <option value="L4">第四課</option>
                         <option value="L5">第五課</option>
                         <option value="L6">第六課</option>
+                        <option value="exam-1">一段範圍（L1-L2）</option>
+                        <option value="exam-2">二段範圍（L3-L4）</option>
+                        <option value="exam-3">三段範圍（L5-L6）</option>
                         <option value="book-review">本冊總複習</option>
                         <option value="all-review">全部總複習</option>
                     </select>
@@ -2036,6 +2039,9 @@
             if (scope.type === "all-review") return "全部總複習";
             const bookLabel = `第${getBookNumber(scope.book)}冊`;
             if (scope.type === "book-review") return `${bookLabel}總複習`;
+            if (scope.type === "exam-1") return `${bookLabel}一段範圍（L1-L2）`;
+            if (scope.type === "exam-2") return `${bookLabel}二段範圍（L3-L4）`;
+            if (scope.type === "exam-3") return `${bookLabel}三段範圍（L5-L6）`;
             return `${bookLabel}第${getLessonNumber(scope.type)}課`;
         }
 
@@ -2043,6 +2049,17 @@
             if (scope.type === "all-review") return [...vocabulary];
             if (scope.type === "book-review") {
                 return vocabulary.filter(item => (item.book || "B1") === scope.book);
+            }
+            const examLessons = {
+                "exam-1": ["L1", "L2"],
+                "exam-2": ["L3", "L4"],
+                "exam-3": ["L5", "L6"]
+            };
+            if (examLessons[scope.type]) {
+                return vocabulary.filter(item => {
+                    return (item.book || "B1") === scope.book
+                        && examLessons[scope.type].includes(item.lesson || "L1");
+                });
             }
             return vocabulary.filter(item => {
                 return (item.book || "B1") === scope.book && (item.lesson || "L1") === scope.type;
@@ -2345,9 +2362,9 @@
                     slot.textContent = char;
                     slot.dataset.fixed = "true";
                 } else {
-                    slot.className = "w-9 h-10 border-b-2 border-slate-300 flex items-center justify-center text-lg font-black text-slate-800 transition-all";
-                    slot.textContent = "";
+                    resetSpellingSlot(slot);
                     slot.dataset.index = i;
+                    slot.onclick = () => returnSpellingLetter(slot);
                 }
                 slotsContainer.appendChild(slot);
             }
@@ -2375,13 +2392,17 @@
         }
 
         function selectLetterBubble(btn, letter) {
+            if (spellingGameData.answered || btn.disabled || btn.style.visibility === 'hidden') return;
+
             const slots = Array.from(document.getElementById('spell-slots-container').children);
             const emptySlot = slots.find(slot => slot.textContent === "" && !slot.dataset.fixed);
             
             if (emptySlot) {
                 emptySlot.textContent = letter;
-                emptySlot.classList.remove('border-slate-300');
-                emptySlot.classList.add('border-amber-400', 'text-amber-600', 'scale-110');
+                emptySlot.dataset.bubbleIndex = btn.dataset.index;
+                emptySlot.title = "點擊可退回此字母";
+                emptySlot.classList.remove('border-slate-300', 'text-slate-800');
+                emptySlot.classList.add('border-amber-400', 'text-amber-600', 'bg-amber-50', 'scale-110');
                 setTimeout(() => emptySlot.classList.remove('scale-110'), 150);
 
                 btn.style.visibility = 'hidden';
@@ -2389,12 +2410,32 @@
             }
         }
 
+        function resetSpellingSlot(slot) {
+            slot.textContent = "";
+            slot.className = "w-9 h-10 border-b-2 border-slate-300 flex items-center justify-center text-lg font-black text-slate-800 transition-all cursor-pointer hover:bg-amber-50";
+            slot.title = "";
+            delete slot.dataset.bubbleIndex;
+        }
+
+        function returnSpellingLetter(slot) {
+            if (spellingGameData.answered || slot.dataset.fixed || !slot.dataset.bubbleIndex) return;
+
+            const bubble = document.querySelector(`.letter-bubble[data-index="${slot.dataset.bubbleIndex}"]`);
+            if (bubble) {
+                bubble.style.visibility = 'visible';
+                delete bubble.dataset.targetSlotIdx;
+            }
+
+            resetSpellingSlot(slot);
+        }
+
         function clearSpellingInput() {
+            if (spellingGameData.answered) return;
+
             const slots = Array.from(document.getElementById('spell-slots-container').children);
             slots.forEach(slot => {
                 if (!slot.dataset.fixed) {
-                    slot.textContent = "";
-                    slot.className = "w-9 h-10 border-b-2 border-slate-300 flex items-center justify-center text-lg font-black text-slate-800 transition-all";
+                    resetSpellingSlot(slot);
                 }
             });
 
