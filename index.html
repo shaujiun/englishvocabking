@@ -189,6 +189,57 @@
         </div>
     </div>
 
+    <!-- 遊戲範圍選擇彈窗 -->
+    <div id="game-scope-modal" class="fixed inset-0 z-[9997] hidden bg-slate-900/45 backdrop-blur-sm flex items-center justify-center px-4">
+        <div class="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-100">
+            <div class="flex items-start justify-between gap-4 mb-6">
+                <div>
+                    <p class="text-[10px] font-bold text-sky-600 uppercase">選擇練習範圍</p>
+                    <h3 id="game-scope-title" class="text-xl font-black text-slate-800 mt-1">開始遊戲</h3>
+                </div>
+                <button type="button" onclick="closeGameScopeModal()" class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all" title="關閉">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="game-scope-book" class="block text-xs font-bold text-slate-500 mb-1.5">冊別</label>
+                    <select id="game-scope-book" onchange="updateGameScopeControls()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400">
+                        <option value="B1">第一冊</option>
+                        <option value="B2">第二冊</option>
+                        <option value="B3">第三冊</option>
+                        <option value="B4">第四冊</option>
+                        <option value="B5">第五冊</option>
+                        <option value="B6">第六冊</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="game-scope-type" class="block text-xs font-bold text-slate-500 mb-1.5">課別／複習範圍</label>
+                    <select id="game-scope-type" onchange="updateGameScopeControls()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400">
+                        <option value="L1">第一課</option>
+                        <option value="L2">第二課</option>
+                        <option value="L3">第三課</option>
+                        <option value="L4">第四課</option>
+                        <option value="L5">第五課</option>
+                        <option value="L6">第六課</option>
+                        <option value="book-review">本冊總複習</option>
+                        <option value="all-review">全部總複習</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="game-scope-summary" class="mt-5 px-4 py-3 bg-sky-50 border border-sky-100 rounded-lg text-xs font-bold text-sky-800"></div>
+
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="closeGameScopeModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-lg text-sm transition-all">取消</button>
+                <button type="button" onclick="confirmGameScope()" class="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 rounded-lg text-sm transition-all">
+                    <i class="fa-solid fa-play mr-1"></i> 開始挑戰
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- ==================== MAIN GAME PAGE (HIDDEN BY DEFAULT) ==================== -->
     <div id="main-content" class="hidden">
         <!-- 頂部導覽列 -->
@@ -260,7 +311,7 @@
                 <!-- 五大遊戲卡片 -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mb-12">
                     <!-- 遊戲一：聽音辨字 -->
-                    <div onclick="startListeningGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                    <div onclick="openGameScopeModal('listening')" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
                         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-sky-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                         <div class="bg-sky-100 text-sky-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-volume-high text-xl"></i>
@@ -273,7 +324,7 @@
                     </div>
 
                     <!-- 遊戲二：字母拼拼樂 -->
-                    <div onclick="startSpellingGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                    <div onclick="openGameScopeModal('spelling')" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
                         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-amber-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                         <div class="bg-amber-100 text-amber-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-keyboard text-xl"></i>
@@ -286,7 +337,7 @@
                     </div>
 
                     <!-- 遊戲三：情境填空 -->
-                    <div onclick="startSentenceGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                    <div onclick="openGameScopeModal('sentence')" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
                         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-emerald-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                         <div class="bg-emerald-100 text-emerald-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-pen-nib text-xl"></i>
@@ -299,7 +350,7 @@
                     </div>
 
                     <!-- 遊戲四：連連看 -->
-                    <div onclick="startMatchingGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                    <div onclick="openGameScopeModal('matching')" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
                         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                         <div class="bg-indigo-100 text-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-puzzle-piece text-xl"></i>
@@ -312,7 +363,7 @@
                     </div>
 
                     <!-- 遊戲五：AI口說發音王 -->
-                    <div onclick="startPronunciationGame()" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
+                    <div onclick="openGameScopeModal('pronunciation')" class="group bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden">
                         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-rose-50 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                         <div class="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-microphone text-xl"></i>
@@ -571,6 +622,7 @@
                             <i class="fa-solid fa-chevron-left"></i> 離開
                         </button>
                         <div class="text-slate-500 text-xs font-bold">
+                            <span data-game-scope-label class="block text-[10px] text-sky-600 text-center mb-0.5"></span>
                             進度: <span id="listen-current-index" class="text-sky-600">1</span>/<span id="listen-total-count">20</span>
                         </div>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
@@ -614,6 +666,7 @@
                             <i class="fa-solid fa-chevron-left"></i> 離開
                         </button>
                         <div class="text-slate-500 text-xs font-bold">
+                            <span data-game-scope-label class="block text-[10px] text-amber-600 text-center mb-0.5"></span>
                             進度: <span id="spell-current-index" class="text-amber-600">1</span>/<span id="spell-total-count">20</span>
                         </div>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
@@ -678,6 +731,7 @@
                             <i class="fa-solid fa-chevron-left"></i> 離開
                         </button>
                         <div class="text-slate-500 text-xs font-bold">
+                            <span data-game-scope-label class="block text-[10px] text-emerald-600 text-center mb-0.5"></span>
                             進度: <span id="sentence-current-index" class="text-emerald-600">1</span>/<span id="sentence-total-count">20</span>
                         </div>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-500">
@@ -729,6 +783,7 @@
                             <i class="fa-solid fa-chevron-left"></i> 離開
                         </button>
                         <div>
+                            <span data-game-scope-label class="block text-[10px] font-bold text-indigo-600 text-center mb-1"></span>
                             <span class="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
                                 已配對: <span id="match-pairs-count">0</span>/6 組
                             </span>
@@ -763,6 +818,7 @@
                             <i class="fa-solid fa-chevron-left"></i> 離開
                         </button>
                         <div class="text-slate-500 text-xs font-bold">
+                            <span data-game-scope-label class="block text-[10px] text-rose-600 text-center mb-0.5"></span>
                             進度: <span id="pronounce-current-index" class="text-rose-600">1</span>/<span id="pronounce-total-count">20</span>
                         </div>
                         <div class="flex items-center gap-1.5 text-xs font-bold text-rose-500">
@@ -870,6 +926,8 @@
         let masteredWords = new Set();
         let users = [...DEFAULT_USERS];
         let currentUser = null; // 當前登入的使用者資訊
+        let pendingGameType = null;
+        let activeGameScope = { book: "B1", type: "L1", label: "第一冊第一課" };
         
         // 個人答對率與熟記進度儲存
         // 格式：{ [username]: { [word]: { correctCount: 0, totalTested: 0, correctAnswers: 0 } } }
@@ -1958,41 +2016,102 @@
             showToast("已還原預設10大國中核心單字與關卡！");
         }
 
+        const GAME_SCOPE_CONFIG = {
+            listening: { title: "聽音辨字王", minimum: 4, start: () => startListeningGame() },
+            spelling: { title: "字母拼拼樂", minimum: 1, start: () => startSpellingGame() },
+            sentence: { title: "情境句子填空", minimum: 4, start: () => startSentenceGame() },
+            matching: { title: "翻牌連連看", minimum: 6, start: () => startMatchingGame() },
+            pronunciation: { title: "AI口說發音王", minimum: 1, start: () => startPronunciationGame() }
+        };
+
+        function getBookNumber(book) {
+            return parseInt(String(book || "B1").replace("B", ""), 10) || 1;
+        }
+
+        function getLessonNumber(lesson) {
+            return parseInt(String(lesson || "L1").replace("L", ""), 10) || 1;
+        }
+
+        function getGameScopeLabel(scope) {
+            if (scope.type === "all-review") return "全部總複習";
+            const bookLabel = `第${getBookNumber(scope.book)}冊`;
+            if (scope.type === "book-review") return `${bookLabel}總複習`;
+            return `${bookLabel}第${getLessonNumber(scope.type)}課`;
+        }
+
+        function getVocabularyForScope(scope = activeGameScope) {
+            if (scope.type === "all-review") return [...vocabulary];
+            if (scope.type === "book-review") {
+                return vocabulary.filter(item => (item.book || "B1") === scope.book);
+            }
+            return vocabulary.filter(item => {
+                return (item.book || "B1") === scope.book && (item.lesson || "L1") === scope.type;
+            });
+        }
+
+        function openGameScopeModal(gameType) {
+            const config = GAME_SCOPE_CONFIG[gameType];
+            if (!config) return;
+
+            pendingGameType = gameType;
+            const bookSelect = document.getElementById("game-scope-book");
+            const typeSelect = document.getElementById("game-scope-type");
+            bookSelect.value = currentUser?.levelBook || activeGameScope.book || "B1";
+            typeSelect.value = currentUser?.levelLesson || "L1";
+            document.getElementById("game-scope-title").textContent = config.title;
+            updateGameScopeControls();
+            document.getElementById("game-scope-modal").classList.remove("hidden");
+        }
+
+        function closeGameScopeModal() {
+            document.getElementById("game-scope-modal").classList.add("hidden");
+            pendingGameType = null;
+        }
+
+        function updateGameScopeControls() {
+            const bookSelect = document.getElementById("game-scope-book");
+            const typeSelect = document.getElementById("game-scope-type");
+            const scope = { book: bookSelect.value, type: typeSelect.value };
+            bookSelect.disabled = scope.type === "all-review";
+
+            const count = getVocabularyForScope(scope).length;
+            const label = getGameScopeLabel(scope);
+            document.getElementById("game-scope-summary").textContent = `${label}：目前共有 ${count} 筆單字資料`;
+        }
+
+        function confirmGameScope() {
+            const config = GAME_SCOPE_CONFIG[pendingGameType];
+            if (!config) return;
+
+            const scope = {
+                book: document.getElementById("game-scope-book").value,
+                type: document.getElementById("game-scope-type").value
+            };
+            scope.label = getGameScopeLabel(scope);
+
+            if (getVocabularyForScope(scope).length < config.minimum) {
+                closeGameScopeModal();
+                showToast("資料尚未建立", "info");
+                return;
+            }
+
+            activeGameScope = scope;
+            document.querySelectorAll("[data-game-scope-label]").forEach(el => {
+                el.textContent = activeGameScope.label;
+            });
+            document.getElementById("game-scope-modal").classList.add("hidden");
+            pendingGameType = null;
+            config.start();
+        }
+
 
         // ==================== 智慧題目選取演算法 (20題原則、優先度與間隔記憶複習) ====================
         function generateGameWordPool(count = 20) {
             if (!currentUser) return [];
             const username = currentUser.username;
             const progress = studentProgress[username] || {};
-            
-            const limitBook = currentUser.levelBook || "B1";
-            const limitLesson = currentUser.levelLesson || "L1";
-
-            function getLevelScore(b, l) {
-                const bVal = parseInt(b.replace("B", ""));
-                const lVal = parseInt(l.replace("L", ""));
-                return bVal * 10 + lVal;
-            }
-
-            const maxAllowedScore = getLevelScore(limitBook, limitLesson);
-
-            let availableWords = vocabulary.filter(item => {
-                const itemBook = item.book || "B1";
-                const itemLesson = item.lesson || "L1";
-                return getLevelScore(itemBook, itemLesson) <= maxAllowedScore;
-            });
-
-            if (availableWords.length === 0) {
-                availableWords = [...vocabulary];
-            }
-
-            const currentExactWords = availableWords.filter(item => {
-                return (item.book || "B1") === limitBook && (item.lesson || "L1") === limitLesson;
-            });
-
-            const reviewWords = availableWords.filter(item => {
-                return !((item.book || "B1") === limitBook && (item.lesson || "L1") === limitLesson);
-            });
+            const availableWords = getVocabularyForScope();
+            if (availableWords.length === 0) return [];
 
             let finalPool = [];
             const shuffle = arr => arr.sort(() => 0.5 - Math.random());
@@ -2021,19 +2140,7 @@
                 return pool[pool.length - 1];
             };
 
-            const shuffledExact = weightedShuffle(currentExactWords);
-            finalPool = [...shuffledExact];
-
-            if (finalPool.length < count) {
-                const neededCount = count - finalPool.length;
-                const shuffledReview = weightedShuffle(reviewWords);
-                finalPool = [...finalPool, ...shuffledReview.slice(0, neededCount)];
-            }
-
-            if (finalPool.length < count) {
-                const extraWords = availableWords.filter(item => !finalPool.includes(item));
-                finalPool = [...finalPool, ...weightedShuffle(extraWords).slice(0, count - finalPool.length)];
-            }
+            finalPool = weightedShuffle(availableWords).slice(0, count);
 
             while (finalPool.length < count && availableWords.length > 0) {
                 finalPool.push(weightedPick(availableWords));
@@ -2055,7 +2162,7 @@
         function startListeningGame() {
             const gamePool = generateGameWordPool(20);
             if (gamePool.length < 4) {
-                showToast("當前設定程度內，單字庫至少需要4個單字才能進行遊戲，請在管理者面板確認或新增單字！", "error");
+                showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-listening');
@@ -2081,8 +2188,8 @@
             listeningGameData.correctWord = targetItem.word;
             listeningGameData.correctItem = targetItem;
 
-            const distractors = vocabulary
-                .filter(item => item.word !== targetItem.word)
+            const distractors = getVocabularyForScope()
+                .filter(item => getVocabKey(item) !== getVocabKey(targetItem))
                 .sort(() => 0.5 - Math.random())
                 .slice(0, 3);
 
@@ -2178,7 +2285,7 @@
         function startSpellingGame() {
             const gamePool = generateGameWordPool(20);
             if (gamePool.length < 1) {
-                showToast("單字庫中沒有單字，請到管理者面板新增單字！", "error");
+                showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-spelling');
@@ -2369,7 +2476,7 @@
         function startSentenceGame() {
             const gamePool = generateGameWordPool(20);
             if (gamePool.length < 4) {
-                showToast("當前設定程度內，單字庫至少需要4個單字才能進行情境填空，請在管理者面板新增單字或調高程度！", "error");
+                showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-sentence');
@@ -2413,8 +2520,8 @@
                 sentenceGameData.hintTimer = null;
             }, 3000);
 
-            const distractors = vocabulary
-                .filter(item => item.word.toLowerCase() !== targetItem.word.toLowerCase())
+            const distractors = getVocabularyForScope()
+                .filter(item => getVocabKey(item) !== getVocabKey(targetItem))
                 .sort(() => 0.5 - Math.random())
                 .slice(0, 3);
 
@@ -2513,7 +2620,7 @@
         function startMatchingGame() {
             const gamePool = generateGameWordPool(6);
             if (gamePool.length < 6) {
-                showToast("單字庫至少需要6個合適程度的單字才能進行翻牌配對，請到管理者面板確認教材！", "error");
+                showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-matching');
@@ -2663,7 +2770,7 @@
         function startPronunciationGame() {
             const gamePool = generateGameWordPool(20);
             if (gamePool.length < 1) {
-                showToast("單字庫中沒有單字，請到管理者面板新增單字！", "error");
+                showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-pronunciation');
