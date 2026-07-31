@@ -412,8 +412,8 @@
                         <div class="bg-emerald-100 text-emerald-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-5 relative z-10">
                             <i class="fa-solid fa-pen-nib text-xl"></i>
                         </div>
-                        <h3 class="font-bold text-lg text-slate-800 mb-2 relative z-10">情境句子填空</h3>
-                        <p class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">20題語意理解。將單字放入會考生活例句中，奠定靈活運用能力。</p>
+                        <h3 id="sentence-game-card-title" class="font-bold text-lg text-slate-800 mb-2 relative z-10">情境句子填空</h3>
+                        <p id="sentence-game-card-description" class="text-slate-400 text-xs leading-relaxed mb-4 relative z-10">依照分組進行單字填空或完整句子重組練習。</p>
                         <span class="text-emerald-600 text-xs font-bold group-hover:translate-x-1 inline-flex items-center gap-1 transition-all relative z-10">
                             開始挑戰 <i class="fa-solid fa-arrow-right text-[10px]"></i>
                         </span>
@@ -811,8 +811,8 @@
 
                     <!-- 句子題目 -->
                     <div class="bg-emerald-50/50 rounded-2xl p-6 border border-emerald-100 mb-8 relative">
-                        <span class="absolute -top-3 left-4 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded">FILL IN THE BLANK</span>
-                        <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">請選擇最符合句子語境的單字：</p>
+                        <span id="sentence-mode-tag" class="absolute -top-3 left-4 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded">FILL IN THE BLANK</span>
+                        <p id="sentence-instruction" class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">請選擇最符合句子語境的單字：</p>
                         <h3 class="text-lg md:text-xl font-bold text-slate-800 leading-relaxed" id="sentence-question-text">
                             <!-- e.g., Remember to do your ______ before watching TV. -->
                         </h3>
@@ -823,6 +823,15 @@
                                 <i class="fa-regular fa-lightbulb"></i> 顯示翻譯提示
                             </button>
                             <p id="sentence-translation-hint-box" class="text-xs text-slate-500 hidden"></p>
+                        </div>
+                    </div>
+
+                    <div id="sentence-reorder-panel" class="hidden mb-6 rounded-2xl border-2 border-dashed border-emerald-200 bg-white p-4">
+                        <p class="mb-2 text-xs font-bold text-emerald-700">你的英文句子：</p>
+                        <div id="sentence-answer-zone" class="min-h-16 flex flex-wrap content-start gap-2 rounded-xl bg-emerald-50/60 p-3"></div>
+                        <div class="mt-3 flex justify-end gap-2">
+                            <button id="sentence-reorder-clear-btn" type="button" onclick="clearSentenceReorderAnswer()" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">清除</button>
+                            <button id="sentence-reorder-submit-btn" type="button" onclick="checkSentenceReorderAnswer()" class="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">確認句子</button>
                         </div>
                     </div>
 
@@ -907,7 +916,10 @@
 
                     <!-- 遊戲主體 -->
                     <div class="text-center py-6">
-                        <span id="pronounce-book-tag" class="bg-rose-50 text-rose-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-rose-100">B1-L1</span>
+                        <div class="flex items-center justify-center gap-2">
+                            <span id="pronounce-book-tag" class="bg-rose-50 text-rose-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-rose-100">B1-L1</span>
+                            <span id="pronounce-mode-label" class="bg-sky-50 text-sky-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-sky-100">單字口說</span>
+                        </div>
                         <h3 class="text-3xl font-black text-slate-800 tracking-wide mt-4 mb-2" id="pronounce-target-word">apple</h3>
                         <p class="text-slate-500 text-sm font-semibold mb-6" id="pronounce-target-translation">蘋果</p>
 
@@ -993,6 +1005,8 @@
         ];
 
         let vocabulary = [...DEFAULT_VOCABULARY];
+        let vocabularyExamplesById = new Map();
+        const lastExampleSentenceByVocab = new Map();
         let masteredWords = new Set();
         let users = [...DEFAULT_USERS];
         let currentUser = null; // 當前登入的使用者資訊
@@ -1052,6 +1066,52 @@
 
         function getProgressForItem(progress, item) {
             return progress[getVocabKey(item)] || progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
+        }
+
+        function mapVocabExampleRow(row) {
+            return {
+                id: row.id,
+                vocabularyId: row.vocabulary_id,
+                sentence: row.sentence,
+                sentenceTranslation: row.sentence_translation,
+                suitableForA: row.suitable_for_a !== false,
+                suitableForB: row.suitable_for_b === true,
+                displayOrder: row.display_order || 0
+            };
+        }
+
+        function getExamplesForItem(item, groupCode = "A") {
+            const storedExamples = vocabularyExamplesById.get(String(item?.id)) || [];
+            const normalizedGroup = normalizeEnglishGroup(groupCode);
+            const filtered = storedExamples.filter(example => (
+                normalizedGroup === "A" ? example.suitableForA : example.suitableForB
+            ));
+
+            if (filtered.length > 0) return filtered;
+            if (!item?.sentence) return [];
+            return [{
+                id: `primary-${item.id || getVocabKey(item)}`,
+                vocabularyId: item.id,
+                sentence: item.sentence,
+                sentenceTranslation: item.sentenceTranslation,
+                suitableForA: true,
+                suitableForB: normalizedGroup === "B",
+                displayOrder: 0
+            }];
+        }
+
+        function pickExampleForItem(item, groupCode = "A") {
+            const examples = getExamplesForItem(item, groupCode);
+            if (examples.length === 0) return null;
+
+            const historyKey = String(item?.id || getVocabKey(item));
+            const previousSentence = lastExampleSentenceByVocab.get(historyKey);
+            const candidates = examples.length > 1
+                ? examples.filter(example => example.sentence !== previousSentence)
+                : examples;
+            const selected = candidates[Math.floor(Math.random() * candidates.length)] || examples[0];
+            lastExampleSentenceByVocab.set(historyKey, selected.sentence);
+            return selected;
         }
 
         function normalizeEnglishGroup(value) {
@@ -1169,6 +1229,16 @@
             const roleTag = document.getElementById("user-role-tag");
             if (!roleTag || currentUser?.role !== "student") return;
             roleTag.textContent = `學生・英語 ${learningContext.englishGroup} 組`;
+
+            const sentenceTitle = document.getElementById("sentence-game-card-title");
+            const sentenceDescription = document.getElementById("sentence-game-card-description");
+            if (sentenceTitle && sentenceDescription) {
+                const isGroupA = learningContext.englishGroup === "A";
+                sentenceTitle.textContent = isGroupA ? "情境句子重組" : "情境句子填空";
+                sentenceDescription.textContent = isGroupA
+                    ? "看中文句意，將所有英文單字排列成完整句子。"
+                    : "選出符合生活情境的單字，完成簡單英文句子。";
+            }
         }
 
         function launchRequestedFocusActivity() {
@@ -1239,6 +1309,24 @@
                 showToast("無法連線資料庫，暫時使用本機預設單字。", "error");
             } else {
                 vocabulary = data.length ? data.map(mapVocabRow) : [...DEFAULT_VOCABULARY];
+            }
+
+            vocabularyExamplesById = new Map();
+            const { data: exampleRows, error: exampleError } = await db
+                .from("vocabulary_examples")
+                .select("id,vocabulary_id,sentence,sentence_translation,suitable_for_a,suitable_for_b,display_order")
+                .eq("is_active", true)
+                .order("display_order", { ascending: true });
+
+            if (exampleError) {
+                console.warn("Vocabulary examples are unavailable; primary examples will be used.", exampleError);
+            } else {
+                (exampleRows || []).map(mapVocabExampleRow).forEach(example => {
+                    const key = String(example.vocabularyId);
+                    const current = vocabularyExamplesById.get(key) || [];
+                    current.push(example);
+                    vocabularyExamplesById.set(key, current);
+                });
             }
 
             updateMasteredBadge();
@@ -2296,7 +2384,9 @@
             const typeSelect = document.getElementById("game-scope-type");
             bookSelect.value = currentUser?.levelBook || activeGameScope.book || "B1";
             typeSelect.value = currentUser?.levelLesson || "L1";
-            document.getElementById("game-scope-title").textContent = config.title;
+            document.getElementById("game-scope-title").textContent = gameType === "sentence" && learningContext.englishGroup === "A"
+                ? "情境句子重組"
+                : config.title;
             updateGameScopeControls();
             document.getElementById("game-scope-modal").classList.remove("hidden");
         }
@@ -2752,6 +2842,12 @@
             shuffledList: [],
             correctWord: "",
             correctItem: null,
+            correctSentence: "",
+            correctSentenceTranslation: "",
+            reorderTokens: [],
+            selectedTokenIds: [],
+            isReorderMode: false,
+            answered: false,
             score: 0,
             hintTimer: null
         };
@@ -2768,6 +2864,7 @@
             sentenceGameData.shuffledList = gamePool;
             sentenceGameData.currentIndex = 0;
             sentenceGameData.score = 0;
+            sentenceGameData.answered = false;
 
             document.getElementById('sentence-total-count').textContent = sentenceGameData.shuffledList.length;
             document.getElementById('sentence-score').textContent = "0";
@@ -2778,6 +2875,7 @@
         function loadSentenceQuestion() {
             document.getElementById('sentence-feedback').classList.add('hidden');
             document.getElementById('sentence-translation-hint-box').classList.add('hidden');
+            document.getElementById('sentence-reorder-panel').classList.add('hidden');
             if (sentenceGameData.hintTimer) {
                 clearTimeout(sentenceGameData.hintTimer);
                 sentenceGameData.hintTimer = null;
@@ -2790,6 +2888,16 @@
             const targetItem = sentenceGameData.shuffledList[sentenceGameData.currentIndex];
             sentenceGameData.correctWord = targetItem.word;
             sentenceGameData.correctItem = targetItem;
+            sentenceGameData.answered = false;
+            sentenceGameData.isReorderMode = learningContext.englishGroup === "A";
+
+            if (sentenceGameData.isReorderMode) {
+                loadSentenceReorderQuestion(targetItem);
+                return;
+            }
+
+            document.getElementById('sentence-mode-tag').textContent = "FILL IN THE BLANK";
+            document.getElementById('sentence-instruction').textContent = "請選擇最符合句子語境的單字：";
 
             let maskedSentence = maskVocabPhraseInSentence(targetItem.sentence, targetItem.word);
 
@@ -2813,6 +2921,7 @@
 
             const optionsGrid = document.getElementById('sentence-options-grid');
             optionsGrid.innerHTML = '';
+            optionsGrid.className = "grid grid-cols-1 sm:grid-cols-2 gap-4";
 
             options.forEach(opt => {
                 const btn = document.createElement('button');
@@ -2827,11 +2936,154 @@
             });
         }
 
+        function tokenizeSentenceForReorder(sentence) {
+            return String(sentence || "").match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*(?:-[A-Za-z0-9]+)*/g) || [];
+        }
+
+        function shuffleSentenceTokens(tokens) {
+            if (tokens.length < 2) return [...tokens];
+            let shuffled = [...tokens];
+            for (let attempt = 0; attempt < 6; attempt++) {
+                shuffled = [...tokens].sort(() => 0.5 - Math.random());
+                if (shuffled.some((token, index) => token.id !== tokens[index].id)) break;
+            }
+            return shuffled;
+        }
+
+        function loadSentenceReorderQuestion(targetItem) {
+            const selectedExample = pickExampleForItem(targetItem, "A") || {
+                sentence: targetItem.sentence,
+                sentenceTranslation: targetItem.sentenceTranslation
+            };
+            const words = tokenizeSentenceForReorder(selectedExample.sentence);
+            sentenceGameData.correctSentence = selectedExample.sentence;
+            sentenceGameData.correctSentenceTranslation = selectedExample.sentenceTranslation;
+            sentenceGameData.reorderTokens = words.map((text, index) => ({ id: `sentence-token-${index}`, text }));
+            sentenceGameData.selectedTokenIds = [];
+
+            document.getElementById('sentence-mode-tag').textContent = "SENTENCE BUILDER";
+            document.getElementById('sentence-instruction').textContent = "請依照中文句意，排列完整的英文句子：";
+            document.getElementById('sentence-question-text').textContent = selectedExample.sentenceTranslation;
+            document.getElementById('sentence-translation-hint-box').classList.add('hidden');
+            document.getElementById('sentence-hint-btn').classList.add('hidden');
+            document.getElementById('sentence-reorder-panel').classList.remove('hidden');
+            document.getElementById('sentence-reorder-clear-btn').disabled = false;
+            document.getElementById('sentence-reorder-submit-btn').disabled = false;
+
+            const optionsGrid = document.getElementById('sentence-options-grid');
+            optionsGrid.className = "flex flex-wrap justify-center gap-3";
+            sentenceGameData.reorderTokens = shuffleSentenceTokens(sentenceGameData.reorderTokens);
+            renderSentenceReorderTokens();
+        }
+
+        function getSentenceTokenById(tokenId) {
+            return sentenceGameData.reorderTokens.find(token => token.id === tokenId);
+        }
+
+        function renderSentenceReorderTokens() {
+            const optionsGrid = document.getElementById('sentence-options-grid');
+            const answerZone = document.getElementById('sentence-answer-zone');
+            optionsGrid.innerHTML = '';
+            answerZone.innerHTML = '';
+
+            const selectedIds = new Set(sentenceGameData.selectedTokenIds);
+            sentenceGameData.reorderTokens
+                .filter(token => !selectedIds.has(token.id))
+                .forEach(token => {
+                    const button = document.createElement('button');
+                    button.type = "button";
+                    button.className = "sentence-reorder-token rounded-xl border-2 border-emerald-200 bg-white px-4 py-2.5 text-base font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-400 hover:bg-emerald-50";
+                    button.textContent = token.text;
+                    button.disabled = sentenceGameData.answered;
+                    button.onclick = () => selectSentenceReorderToken(token.id);
+                    optionsGrid.appendChild(button);
+                });
+
+            sentenceGameData.selectedTokenIds.forEach(tokenId => {
+                const token = getSentenceTokenById(tokenId);
+                if (!token) return;
+                const button = document.createElement('button');
+                button.type = "button";
+                button.className = "sentence-reorder-token rounded-xl border-2 border-sky-200 bg-sky-50 px-3.5 py-2 text-base font-bold text-sky-800 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700";
+                button.textContent = token.text;
+                button.disabled = sentenceGameData.answered;
+                button.title = "點一下可放回下方";
+                button.onclick = () => returnSentenceReorderToken(token.id);
+                answerZone.appendChild(button);
+            });
+
+            if (sentenceGameData.selectedTokenIds.length === 0) {
+                const placeholder = document.createElement('span');
+                placeholder.className = "self-center text-sm font-semibold text-slate-400";
+                placeholder.textContent = "依序點選下方單字";
+                answerZone.appendChild(placeholder);
+            }
+        }
+
+        function selectSentenceReorderToken(tokenId) {
+            if (sentenceGameData.answered || sentenceGameData.selectedTokenIds.includes(tokenId)) return;
+            sentenceGameData.selectedTokenIds.push(tokenId);
+            renderSentenceReorderTokens();
+        }
+
+        function returnSentenceReorderToken(tokenId) {
+            if (sentenceGameData.answered) return;
+            sentenceGameData.selectedTokenIds = sentenceGameData.selectedTokenIds.filter(id => id !== tokenId);
+            renderSentenceReorderTokens();
+        }
+
+        function clearSentenceReorderAnswer() {
+            if (sentenceGameData.answered) return;
+            sentenceGameData.selectedTokenIds = [];
+            renderSentenceReorderTokens();
+        }
+
+        function checkSentenceReorderAnswer() {
+            if (sentenceGameData.answered) return;
+            if (sentenceGameData.selectedTokenIds.length !== sentenceGameData.reorderTokens.length) {
+                showToast("請先把所有英文單字排列完成。", "info");
+                return;
+            }
+
+            const selectedWords = sentenceGameData.selectedTokenIds.map(tokenId => getSentenceTokenById(tokenId)?.text || "");
+            const correctWords = tokenizeSentenceForReorder(sentenceGameData.correctSentence);
+            const isCorrect = selectedWords.length === correctWords.length
+                && selectedWords.every((word, index) => word.toLowerCase() === correctWords[index].toLowerCase());
+
+            sentenceGameData.answered = true;
+            logAnswer(sentenceGameData.correctItem, isCorrect);
+            document.getElementById('sentence-reorder-clear-btn').disabled = true;
+            document.getElementById('sentence-reorder-submit-btn').disabled = true;
+            renderSentenceReorderTokens();
+
+            const feedback = document.getElementById('sentence-feedback');
+            const feedbackIcon = document.getElementById('sentence-feedback-icon');
+            const feedbackText = document.getElementById('sentence-feedback-text');
+            const feedbackBox = feedback.querySelector('div');
+
+            if (isCorrect) {
+                sentenceGameData.score += 10;
+                document.getElementById('sentence-score').textContent = sentenceGameData.score;
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+                feedbackText.textContent = "句子順序完全正確！";
+            } else {
+                feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
+                feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
+                feedbackText.textContent = `正確句子：${sentenceGameData.correctSentence}`;
+            }
+
+            feedback.classList.remove('hidden');
+            speak(sentenceGameData.correctSentence);
+        }
+
         function toggleSentenceHint() {
             document.getElementById('sentence-translation-hint-box').classList.toggle('hidden');
         }
 
         function selectSentenceAnswer(selectedItem, selectedBtn) {
+            if (sentenceGameData.answered) return;
+            sentenceGameData.answered = true;
             const buttons = document.querySelectorAll('.sentence-opt-btn');
             buttons.forEach(btn => {
                 btn.disabled = true;
@@ -3082,6 +3334,7 @@
             score: 0,
             correctWord: "",
             correctItem: null,
+            targetMode: "word",
             shuffledList: []
         };
 
@@ -3123,19 +3376,35 @@
             document.getElementById('pronounce-current-index').textContent = index + 1;
 
             const targetItem = pronunciationGameData.shuffledList[index];
-            pronunciationGameData.correctWord = targetItem.word;
             pronunciationGameData.correctItem = targetItem;
 
+            const isGroupA = learningContext.englishGroup === "A";
+            const shouldUseSentence = isGroupA || Math.random() < 0.2;
+            const sentenceExample = shouldUseSentence
+                ? pickExampleForItem(targetItem, isGroupA ? "A" : "B")
+                : null;
+            const usesSentence = Boolean(sentenceExample?.sentence);
+            pronunciationGameData.targetMode = usesSentence ? "sentence" : "word";
+            pronunciationGameData.correctWord = usesSentence ? sentenceExample.sentence : targetItem.word;
+
             // 渲染資訊
-            document.getElementById('pronounce-target-word').textContent = targetItem.word;
-            document.getElementById('pronounce-target-translation').textContent = targetItem.translation;
+            const targetText = document.getElementById('pronounce-target-word');
+            targetText.textContent = pronunciationGameData.correctWord;
+            targetText.className = usesSentence
+                ? "text-xl md:text-2xl font-black text-slate-800 tracking-wide mt-4 mb-2 leading-relaxed"
+                : "text-3xl font-black text-slate-800 tracking-wide mt-4 mb-2";
+            document.getElementById('pronounce-target-translation').textContent = usesSentence
+                ? sentenceExample.sentenceTranslation
+                : targetItem.translation;
             document.getElementById('pronounce-book-tag').textContent = `${targetItem.book || "B1"}-${targetItem.lesson || "L1"}`;
+            document.getElementById('pronounce-mode-label').textContent = usesSentence ? "句子口說" : "單字口說";
 
             // 重置麥克風按鈕
             resetMicButtonUI();
 
             // 啟用麥克風按鈕點擊
             document.getElementById('pronounce-mic-btn').disabled = false;
+            updatePronunciationInstruction();
 
             // 自動播放發音引導學生
             setTimeout(() => {
@@ -3145,6 +3414,17 @@
 
         function playPronounceTargetSound() {
             speak(pronunciationGameData.correctWord);
+        }
+
+        function getPronunciationTargetLabel() {
+            return pronunciationGameData.targetMode === "sentence" ? "句子" : "單字";
+        }
+
+        function updatePronunciationInstruction() {
+            const statusEl = document.getElementById('pronounce-status-text');
+            if (!statusEl) return;
+            statusEl.textContent = `點擊麥克風大聲唸出這個${getPronunciationTargetLabel()}`;
+            statusEl.className = "text-slate-400 text-xs font-semibold";
         }
 
         // 切換口說錄音狀態
@@ -3175,7 +3455,7 @@
             speechRecognitionInstance.onstart = function() {
                 isSpeechRecognitionActive = true;
                 setMicRecordingUI(true);
-                document.getElementById('pronounce-status-text').textContent = "正在聆聽中...請大聲朗讀單字！";
+                document.getElementById('pronounce-status-text').textContent = `正在聆聽中...請大聲朗讀${getPronunciationTargetLabel()}！`;
                 document.getElementById('pronounce-status-text').className = "text-rose-500 text-xs font-black animate-pulse";
             };
 
@@ -3225,8 +3505,7 @@
             setMicRecordingUI(false);
             const statusEl = document.getElementById('pronounce-status-text');
             if (statusEl) {
-                statusEl.textContent = "點擊麥克風大聲唸出這個單字";
-                statusEl.className = "text-slate-400 text-xs font-semibold";
+                updatePronunciationInstruction();
             }
         }
 
@@ -3386,7 +3665,7 @@
             } else {
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
-                feedbackText.textContent = "發音有點偏差喔！請點擊左側示範多聽幾次。";
+                feedbackText.textContent = `${getPronunciationTargetLabel()}發音有點偏差喔！請點擊左側示範多聽幾次。`;
             }
 
             feedback.classList.remove('hidden');
