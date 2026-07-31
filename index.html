@@ -228,7 +228,7 @@
                 <i class="fa-solid fa-trophy text-3xl"></i>
             </div>
             <h3 id="game-over-title" class="text-2xl font-black text-slate-800 mb-2">恭喜完成！</h3>
-            <p class="text-slate-500 text-sm font-semibold mb-6">這次練習已經完成，系統會自動回到主頁面。</p>
+            <p id="game-over-description" class="text-slate-500 text-sm font-semibold mb-6">這次練習已經完成，系統會自動回到主頁面。</p>
             <div class="grid grid-cols-2 gap-3 mb-6">
                 <div class="bg-sky-50 rounded-2xl p-4 border border-sky-100">
                     <span class="block text-[10px] font-bold text-sky-500 mb-1">獲得分數</span>
@@ -855,7 +855,7 @@
                         <div>
                             <span data-game-scope-label class="block text-[10px] font-bold text-indigo-600 text-center mb-1"></span>
                             <span class="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-100">
-                                已配對: <span id="match-pairs-count">0</span>/6 組
+                                已配對: <span id="match-pairs-count">0</span>/<span id="match-total-count">6</span> 組
                             </span>
                         </div>
                         <div class="text-xs font-bold text-slate-500">
@@ -998,6 +998,21 @@
         let currentUser = null; // 當前登入的使用者資訊
         let pendingGameType = null;
         let activeGameScope = { book: "B1", type: "L1", label: "第一冊第一課" };
+        const FOCUS_ACTIVITY_CODES = new Set(["listening", "spelling", "sentence", "matching", "pronunciation"]);
+        const DEFAULT_GROUP_SETTINGS = {
+            A: { questionCount: 20, targetScore: 80 },
+            B: { questionCount: 10, targetScore: 80 }
+        };
+        let learningContext = {
+            studentId: null,
+            englishGroup: "B",
+            focusTask: null,
+            focusActivity: null,
+            questionCount: 10,
+            targetScore: 80,
+            launchedFromTask: false,
+            attemptReported: false
+        };
         
         // 個人答對率與熟記進度儲存
         // 格式：{ [username]: { [word]: { correctCount: 0, totalTested: 0, correctAnswers: 0 } } }
@@ -1037,6 +1052,140 @@
 
         function getProgressForItem(progress, item) {
             return progress[getVocabKey(item)] || progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
+        }
+
+        function normalizeEnglishGroup(value) {
+            return String(value || "").trim().toUpperCase() === "A" ? "A" : "B";
+        }
+
+        function clampInteger(value, minimum, maximum, fallback) {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return fallback;
+            return Math.min(maximum, Math.max(minimum, parsed));
+        }
+
+        function getLocalIsoDate(date = new Date()) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        }
+
+        function getRequestedFocusContext() {
+            const params = new URLSearchParams(window.location.search);
+            const taskId = params.get("focusTask") || "";
+            const activity = params.get("focusActivity") || "";
+            return {
+                taskId: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId) ? taskId : null,
+                activity: FOCUS_ACTIVITY_CODES.has(activity) ? activity : null
+            };
+        }
+
+        async function loadLearningContext() {
+            const requested = getRequestedFocusContext();
+            learningContext = {
+                studentId: null,
+                englishGroup: "B",
+                focusTask: null,
+                focusActivity: requested.activity,
+                questionCount: DEFAULT_GROUP_SETTINGS.B.questionCount,
+                targetScore: DEFAULT_GROUP_SETTINGS.B.targetScore,
+                launchedFromTask: false,
+                attemptReported: false
+            };
+
+            if (!currentUser || currentUser.role !== "student") return;
+
+            const { data: student, error: studentError } = await db
+                .from("students")
+                .select("id,student_id_code,full_name")
+                .eq("profile_id", currentUser.id)
+                .eq("is_active", true)
+                .maybeSingle();
+
+            if (studentError) {
+                console.warn("Unable to load contact-book student profile.", studentError);
+                return;
+            }
+
+            if (student) {
+                learningContext.studentId = student.id;
+                const { data: resolvedGroup, error: groupError } = await db.rpc("resolve_student_learning_group", {
+                    p_student_id: student.id,
+                    p_subject_code: "english",
+                    p_reference_date: getLocalIsoDate()
+                });
+                if (!groupError) {
+                    learningContext.englishGroup = normalizeEnglishGroup(resolvedGroup);
+                } else {
+                    console.warn("Unable to resolve English group.", groupError);
+                }
+            }
+
+            const defaults = DEFAULT_GROUP_SETTINGS[learningContext.englishGroup];
+            learningContext.questionCount = defaults.questionCount;
+            learningContext.targetScore = defaults.targetScore;
+
+            if (!requested.taskId) return;
+
+            const { data: task, error: taskError } = await db
+                .from("student_focus_tasks")
+                .select("id,subject_code_snapshot,activity_code_snapshot,group_code_snapshot,question_count,target_score,status")
+                .eq("id", requested.taskId)
+                .maybeSingle();
+
+            if (taskError || !task || String(task.subject_code_snapshot).toLowerCase() !== "english") {
+                console.warn("Unable to verify focus task.", taskError);
+                showToast("找不到這項英文專注任務，已改為一般練習。", "info");
+                return;
+            }
+
+            const taskActivity = String(task.activity_code_snapshot || "").toLowerCase();
+            if (!FOCUS_ACTIVITY_CODES.has(taskActivity)) return;
+
+            learningContext.focusTask = task;
+            learningContext.focusActivity = taskActivity;
+            learningContext.englishGroup = normalizeEnglishGroup(task.group_code_snapshot);
+            learningContext.questionCount = clampInteger(task.question_count, 1, 50, defaults.questionCount);
+            learningContext.targetScore = clampInteger(task.target_score, 0, 100, defaults.targetScore);
+            learningContext.launchedFromTask = true;
+        }
+
+        function getGameQuestionCount(gameType) {
+            if (currentUser?.role === "admin") return 20;
+            if (learningContext.launchedFromTask && learningContext.focusActivity === gameType) {
+                return learningContext.questionCount;
+            }
+            return DEFAULT_GROUP_SETTINGS[learningContext.englishGroup]?.questionCount || 10;
+        }
+
+        function beginGameAttempt(gameType) {
+            if (learningContext.launchedFromTask && learningContext.focusActivity === gameType) {
+                learningContext.attemptReported = false;
+            }
+        }
+
+        function updateLearningContextBadge() {
+            const roleTag = document.getElementById("user-role-tag");
+            if (!roleTag || currentUser?.role !== "student") return;
+            roleTag.textContent = `學生・英語 ${learningContext.englishGroup} 組`;
+        }
+
+        function launchRequestedFocusActivity() {
+            if (!learningContext.launchedFromTask || !learningContext.focusActivity) return;
+            activeGameScope = {
+                book: currentUser?.levelBook || "B1",
+                type: currentUser?.levelLesson || "L1"
+            };
+            activeGameScope.label = getGameScopeLabel(activeGameScope);
+            const config = GAME_SCOPE_CONFIG[learningContext.focusActivity];
+            if (config && getVocabularyForScope(activeGameScope).length < config.minimum) {
+                activeGameScope = { book: "B1", type: "all-review", label: "全部總複習" };
+            }
+            document.querySelectorAll("[data-game-scope-label]").forEach(el => {
+                el.textContent = `${activeGameScope.label}・英語 ${learningContext.englishGroup} 組`;
+            });
+            if (config) config.start();
         }
 
         function escapeRegExp(text) {
@@ -1355,6 +1504,7 @@
             await loadSavedVocab();
             await loadProfiles();
             await loadStudentState();
+            await loadLearningContext();
 
             document.getElementById('auth-container').classList.add('hidden');
             document.getElementById('main-content').classList.remove('hidden');
@@ -1373,8 +1523,12 @@
                 adminBtn.classList.add('hidden');
             }
 
+            updateLearningContextBadge();
             switchTab('dashboard');
             showToast(`歡迎回來，${user.username}！`);
+            if (learningContext.launchedFromTask) {
+                window.setTimeout(launchRequestedFocusActivity, 250);
+            }
         }
 
         async function logout() {
@@ -1606,7 +1760,7 @@
                 renderQuickCards();
                 renderStudentStats();
             }
-            
+
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -2181,7 +2335,7 @@
 
             activeGameScope = scope;
             document.querySelectorAll("[data-game-scope-label]").forEach(el => {
-                el.textContent = activeGameScope.label;
+                el.textContent = `${activeGameScope.label}・英語 ${learningContext.englishGroup} 組`;
             });
             document.getElementById("game-scope-modal").classList.add("hidden");
             pendingGameType = null;
@@ -2244,7 +2398,8 @@
         };
 
         function startListeningGame() {
-            const gamePool = generateGameWordPool(20);
+            beginGameAttempt("listening");
+            const gamePool = generateGameWordPool(getGameQuestionCount("listening"));
             if (gamePool.length < 4) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -2350,7 +2505,7 @@
             if (listeningGameData.currentIndex < listeningGameData.shuffledList.length) {
                 loadListeningQuestion();
             } else {
-                showGameOverModal(listeningGameData.score, listeningGameData.shuffledList.length);
+                showGameOverModal(listeningGameData.score, listeningGameData.shuffledList.length, "恭喜完成！", "listening");
             }
         }
 
@@ -2367,7 +2522,8 @@
         };
 
         function startSpellingGame() {
-            const gamePool = generateGameWordPool(20);
+            beginGameAttempt("spelling");
+            const gamePool = generateGameWordPool(getGameQuestionCount("spelling"));
             if (gamePool.length < 1) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -2437,7 +2593,8 @@
             }
 
             const lettersOnly = targetItem.word.replace(/[^a-zA-Z]/g, '').split('');
-            const shuffledLetters = lettersOnly.sort(() => 0.5 - Math.random());
+            const decoyLetters = createSpellingDecoyLetters(targetItem.word, learningContext.englishGroup);
+            const shuffledLetters = [...lettersOnly, ...decoyLetters].sort(() => 0.5 - Math.random());
 
             const bubblesContainer = document.getElementById('spell-bubbles-container');
             bubblesContainer.innerHTML = '';
@@ -2452,6 +2609,24 @@
             });
 
             setTimeout(() => { playSpellingSound(); }, 400);
+        }
+
+        function createSpellingDecoyLetters(answer, groupCode) {
+            if (normalizeEnglishGroup(groupCode) !== "A") return [];
+
+            const answerLetters = new Set(String(answer || "").toLowerCase().replace(/[^a-z]/g, "").split(""));
+            const candidates = "abcdefghijklmnopqrstuvwxyz"
+                .split("")
+                .filter(letter => !answerLetters.has(letter));
+            const decoyCount = Math.floor(Math.random() * 5);
+            const result = [];
+
+            for (let index = 0; index < decoyCount && candidates.length > 0; index++) {
+                const candidateIndex = Math.floor(Math.random() * candidates.length);
+                result.push(candidates.splice(candidateIndex, 1)[0]);
+            }
+
+            return result;
         }
 
         function playSpellingSound() {
@@ -2566,7 +2741,7 @@
             if (spellingGameData.currentIndex < spellingGameData.shuffledList.length) {
                 loadSpellingQuestion();
             } else {
-                showGameOverModal(spellingGameData.score, spellingGameData.shuffledList.length);
+                showGameOverModal(spellingGameData.score, spellingGameData.shuffledList.length, "恭喜完成！", "spelling");
             }
         }
 
@@ -2582,7 +2757,8 @@
         };
 
         function startSentenceGame() {
-            const gamePool = generateGameWordPool(20);
+            beginGameAttempt("sentence");
+            const gamePool = generateGameWordPool(getGameQuestionCount("sentence"));
             if (gamePool.length < 4) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -2713,7 +2889,7 @@
             if (sentenceGameData.currentIndex < sentenceGameData.shuffledList.length) {
                 loadSentenceQuestion();
             } else {
-                showGameOverModal(sentenceGameData.score, sentenceGameData.shuffledList.length);
+                showGameOverModal(sentenceGameData.score, sentenceGameData.shuffledList.length, "恭喜完成！", "sentence");
             }
         }
 
@@ -2721,25 +2897,48 @@
         // ==================== GAME 4: 翻牌連連看 ====================
         let matchingGameData = {
             clicks: 0,
-            matchedPairs: 0,
-            selectedCard: null
+            completedPairs: 0,
+            roundMatchedPairs: 0,
+            roundSize: 0,
+            shuffledList: [],
+            selectedCard: null,
+            busy: false
         };
 
         function startMatchingGame() {
-            const gamePool = generateGameWordPool(6);
+            beginGameAttempt("matching");
+            const gamePool = generateGameWordPool(getGameQuestionCount("matching"));
             if (gamePool.length < 6) {
                 showToast("資料尚未建立", "info");
                 return;
             }
             switchTab('game-matching');
             document.getElementById('match-complete-panel').classList.add('hidden');
-            
+
             matchingGameData.clicks = 0;
-            matchingGameData.matchedPairs = 0;
+            matchingGameData.completedPairs = 0;
+            matchingGameData.roundMatchedPairs = 0;
+            matchingGameData.roundSize = 0;
+            matchingGameData.shuffledList = gamePool;
             matchingGameData.selectedCard = null;
+            matchingGameData.busy = false;
 
             document.getElementById('match-pairs-count').textContent = "0";
+            document.getElementById('match-total-count').textContent = gamePool.length;
             document.getElementById('match-clicks').textContent = "0";
+
+            renderMatchingRound();
+        }
+
+        function renderMatchingRound() {
+            const gamePool = matchingGameData.shuffledList.slice(
+                matchingGameData.completedPairs,
+                matchingGameData.completedPairs + 6
+            );
+            matchingGameData.roundMatchedPairs = 0;
+            matchingGameData.roundSize = gamePool.length;
+            matchingGameData.selectedCard = null;
+            matchingGameData.busy = false;
 
             let cards = [];
             gamePool.forEach((item, index) => {
@@ -2823,14 +3022,20 @@
                         speak(englishWord);
 
                         logAnswer(matchedItem, true);
-
-                        matchingGameData.matchedPairs++;
-                        document.getElementById('match-pairs-count').textContent = matchingGameData.matchedPairs;
+                        matchingGameData.roundMatchedPairs++;
+                        const totalMatched = matchingGameData.completedPairs + matchingGameData.roundMatchedPairs;
+                        document.getElementById('match-pairs-count').textContent = totalMatched;
                         matchingGameData.selectedCard = null;
                         matchingGameData.busy = false;
 
-                        if (matchingGameData.matchedPairs === 6) {
-                            finishMatchingGame();
+                        if (matchingGameData.roundMatchedPairs === matchingGameData.roundSize) {
+                            matchingGameData.completedPairs += matchingGameData.roundSize;
+                            if (matchingGameData.completedPairs >= matchingGameData.shuffledList.length) {
+                                finishMatchingGame();
+                            } else {
+                                showToast("這一輪完成，接著挑戰下一組！", "success");
+                                window.setTimeout(renderMatchingRound, 500);
+                            }
                         }
                     }, 600);
 
@@ -2862,7 +3067,12 @@
         function finishMatchingGame() {
             document.getElementById('match-complete-panel').classList.remove('hidden');
             document.getElementById('match-final-clicks').textContent = matchingGameData.clicks;
-            showGameOverModal(60, 6, "恭喜完成！");
+            showGameOverModal(
+                matchingGameData.shuffledList.length * 10,
+                matchingGameData.shuffledList.length,
+                "恭喜完成！",
+                "matching"
+            );
         }
 
 
@@ -2876,7 +3086,8 @@
         };
 
         function startPronunciationGame() {
-            const gamePool = generateGameWordPool(20);
+            beginGameAttempt("pronunciation");
+            const gamePool = generateGameWordPool(getGameQuestionCount("pronunciation"));
             if (gamePool.length < 1) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -3188,7 +3399,7 @@
             if (pronunciationGameData.currentIndex < pronunciationGameData.shuffledList.length) {
                 loadPronunciationQuestion();
             } else {
-                showGameOverModal(pronunciationGameData.score, pronunciationGameData.shuffledList.length);
+                showGameOverModal(pronunciationGameData.score, pronunciationGameData.shuffledList.length, "恭喜完成！", "pronunciation");
             }
         }
 
@@ -3196,11 +3407,39 @@
         // ==================== GAME OVER MODAL ====================
         let gameOverReturnTimer = null;
 
-        function showGameOverModal(points, totalItems, title = "恭喜完成！") {
+        async function reportFocusTaskResult(gameType, points, totalItems) {
+            if (!learningContext.launchedFromTask
+                || learningContext.focusActivity !== gameType
+                || !learningContext.focusTask?.id
+                || learningContext.attemptReported) {
+                return null;
+            }
+
+            const correctCount = Math.min(totalItems, Math.max(0, Math.round(points / 10)));
+            const percentage = totalItems > 0 ? Math.round((correctCount / totalItems) * 100) : 0;
+            const { data, error } = await db.rpc("record_focus_task_attempt", {
+                p_focus_task_id: learningContext.focusTask.id,
+                p_score: percentage,
+                p_correct_count: correctCount,
+                p_question_count: totalItems
+            });
+
+            if (error) {
+                console.error("Unable to report focus task result.", error);
+                showToast("成績已顯示，但專注任務紀錄暫時無法儲存。", "error");
+                return null;
+            }
+
+            learningContext.attemptReported = true;
+            return data;
+        }
+
+        function showGameOverModal(points, totalItems, title = "恭喜完成！", gameType = null) {
             const modal = document.getElementById('game-over-modal');
             const scoreSpan = document.getElementById('modal-score');
             const masteredSpan = document.getElementById('modal-mastered');
             const titleEl = document.getElementById('game-over-title');
+            const descriptionEl = document.getElementById('game-over-description');
 
             if (gameOverReturnTimer) {
                 clearTimeout(gameOverReturnTimer);
@@ -3210,6 +3449,20 @@
             titleEl.textContent = title;
             scoreSpan.textContent = `+${points}`;
             masteredSpan.textContent = `+${totalItems}`;
+            descriptionEl.textContent = "這次練習已經完成，系統會自動回到主頁面。";
+
+            if (gameType) {
+                reportFocusTaskResult(gameType, points, totalItems).then(result => {
+                    if (!result) return;
+                    if (result.passed) {
+                        titleEl.textContent = "專注任務達成！";
+                        descriptionEl.textContent = `已達到 ${result.targetScore} 分，任務完成紀錄已儲存。`;
+                    } else {
+                        titleEl.textContent = "再練一次就會更好！";
+                        descriptionEl.textContent = `本次尚未達到 ${result.targetScore} 分，任務仍會保留。`;
+                    }
+                });
+            }
 
             modal.classList.remove('hidden');
             setTimeout(() => {
