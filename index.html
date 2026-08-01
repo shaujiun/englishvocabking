@@ -239,10 +239,15 @@
                     <span id="modal-mastered" class="text-xl font-black text-emerald-700">+0</span>
                 </div>
             </div>
-            <button onclick="closeGameOverModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-sm transition-all">
-                回到主頁面
-            </button>
-            <p class="text-[11px] text-slate-400 mt-3">約 2 秒後自動返回</p>
+            <div class="space-y-3">
+                <button id="game-over-retry-btn" type="button" onclick="retryWrongAnswers()" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md shadow-amber-100">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> 立即重練錯題
+                </button>
+                <button onclick="closeGameOverModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-sm transition-all">
+                    回到主頁面
+                </button>
+            </div>
+            <p id="game-over-auto-note" class="text-[11px] text-slate-400 mt-3">約 3 秒後自動返回</p>
         </div>
     </div>
 
@@ -2477,6 +2482,15 @@
             return finalPool.slice(0, count);
         }
 
+        function rememberWrongAnswer(gameData, item) {
+            if (!gameData || !item) return;
+            if (!Array.isArray(gameData.wrongItems)) gameData.wrongItems = [];
+            const itemKey = getVocabKey(item);
+            if (!gameData.wrongItems.some(existing => getVocabKey(existing) === itemKey)) {
+                gameData.wrongItems.push(item);
+            }
+        }
+
 
         // ==================== GAME 1: 聽音辨字王 ====================
         let listeningGameData = {
@@ -2484,13 +2498,17 @@
             score: 0,
             correctWord: "",
             correctItem: null,
-            shuffledList: []
+            shuffledList: [],
+            wrongItems: []
         };
 
-        function startListeningGame() {
+        function startListeningGame(retryPool = null) {
             beginGameAttempt("listening");
-            const gamePool = generateGameWordPool(getGameQuestionCount("listening"));
-            if (gamePool.length < 4) {
+            const isRetryRound = Array.isArray(retryPool) && retryPool.length > 0;
+            const gamePool = isRetryRound
+                ? [...retryPool]
+                : generateGameWordPool(getGameQuestionCount("listening"));
+            if (gamePool.length < (isRetryRound ? 1 : 4)) {
                 showToast("資料尚未建立", "info");
                 return;
             }
@@ -2499,6 +2517,7 @@
             listeningGameData.shuffledList = gamePool;
             listeningGameData.currentIndex = 0;
             listeningGameData.score = 0;
+            listeningGameData.wrongItems = [];
 
             document.getElementById('listen-total-count').textContent = listeningGameData.shuffledList.length;
             document.getElementById('listen-score').textContent = "0";
@@ -2573,6 +2592,7 @@
                 
                 speak(listeningGameData.correctWord);
             } else {
+                rememberWrongAnswer(listeningGameData, listeningGameData.correctItem);
                 selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
                 selectedBtn.classList.add('bg-rose-50', 'border-rose-500', 'text-rose-700');
                 
@@ -2595,7 +2615,7 @@
             if (listeningGameData.currentIndex < listeningGameData.shuffledList.length) {
                 loadListeningQuestion();
             } else {
-                showGameOverModal(listeningGameData.score, listeningGameData.shuffledList.length, "恭喜完成！", "listening");
+                showGameOverModal(listeningGameData.score, listeningGameData.shuffledList.length, "恭喜完成！", "listening", listeningGameData.wrongItems);
             }
         }
 
@@ -2608,12 +2628,15 @@
             correctItem: null,
             userAnswer: [],
             score: 0,
-            answered: false
+            answered: false,
+            wrongItems: []
         };
 
-        function startSpellingGame() {
+        function startSpellingGame(retryPool = null) {
             beginGameAttempt("spelling");
-            const gamePool = generateGameWordPool(getGameQuestionCount("spelling"));
+            const gamePool = Array.isArray(retryPool) && retryPool.length > 0
+                ? [...retryPool]
+                : generateGameWordPool(getGameQuestionCount("spelling"));
             if (gamePool.length < 1) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -2624,6 +2647,7 @@
             spellingGameData.currentIndex = 0;
             spellingGameData.score = 0;
             spellingGameData.answered = false;
+            spellingGameData.wrongItems = [];
 
             document.getElementById('spell-total-count').textContent = spellingGameData.shuffledList.length;
             document.getElementById('spell-score').textContent = "0";
@@ -2812,6 +2836,7 @@
                 feedbackText.textContent = "太神奇了！單字拼寫完全正確！";
                 speak(correctSpelling);
             } else {
+                rememberWrongAnswer(spellingGameData, spellingGameData.correctItem);
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-500"></i>';
                 feedbackText.textContent = `喔不！正確拼寫是: ${correctSpelling}`;
@@ -2831,7 +2856,7 @@
             if (spellingGameData.currentIndex < spellingGameData.shuffledList.length) {
                 loadSpellingQuestion();
             } else {
-                showGameOverModal(spellingGameData.score, spellingGameData.shuffledList.length, "恭喜完成！", "spelling");
+                showGameOverModal(spellingGameData.score, spellingGameData.shuffledList.length, "恭喜完成！", "spelling", spellingGameData.wrongItems);
             }
         }
 
@@ -2849,13 +2874,17 @@
             isReorderMode: false,
             answered: false,
             score: 0,
-            hintTimer: null
+            hintTimer: null,
+            wrongItems: []
         };
 
-        function startSentenceGame() {
+        function startSentenceGame(retryPool = null) {
             beginGameAttempt("sentence");
-            const gamePool = generateGameWordPool(getGameQuestionCount("sentence"));
-            if (gamePool.length < 4) {
+            const isRetryRound = Array.isArray(retryPool) && retryPool.length > 0;
+            const gamePool = isRetryRound
+                ? [...retryPool]
+                : generateGameWordPool(getGameQuestionCount("sentence"));
+            if (gamePool.length < (isRetryRound ? 1 : 4)) {
                 showToast("資料尚未建立", "info");
                 return;
             }
@@ -2865,6 +2894,7 @@
             sentenceGameData.currentIndex = 0;
             sentenceGameData.score = 0;
             sentenceGameData.answered = false;
+            sentenceGameData.wrongItems = [];
 
             document.getElementById('sentence-total-count').textContent = sentenceGameData.shuffledList.length;
             document.getElementById('sentence-score').textContent = "0";
@@ -3068,6 +3098,7 @@
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
                 feedbackText.textContent = "句子順序完全正確！";
             } else {
+                rememberWrongAnswer(sentenceGameData, sentenceGameData.correctItem);
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
                 feedbackText.textContent = `正確句子：${sentenceGameData.correctSentence}`;
@@ -3119,6 +3150,7 @@
                 
                 speak(sentenceGameData.correctWord);
             } else {
+                rememberWrongAnswer(sentenceGameData, sentenceGameData.correctItem);
                 selectedBtn.classList.remove('bg-slate-50', 'border-slate-100');
                 selectedBtn.classList.add('bg-rose-50', 'border-rose-500', 'text-rose-700');
                 
@@ -3141,7 +3173,7 @@
             if (sentenceGameData.currentIndex < sentenceGameData.shuffledList.length) {
                 loadSentenceQuestion();
             } else {
-                showGameOverModal(sentenceGameData.score, sentenceGameData.shuffledList.length, "恭喜完成！", "sentence");
+                showGameOverModal(sentenceGameData.score, sentenceGameData.shuffledList.length, "恭喜完成！", "sentence", sentenceGameData.wrongItems);
             }
         }
 
@@ -3335,12 +3367,15 @@
             correctWord: "",
             correctItem: null,
             targetMode: "word",
-            shuffledList: []
+            shuffledList: [],
+            wrongItems: []
         };
 
-        function startPronunciationGame() {
+        function startPronunciationGame(retryPool = null) {
             beginGameAttempt("pronunciation");
-            const gamePool = generateGameWordPool(getGameQuestionCount("pronunciation"));
+            const gamePool = Array.isArray(retryPool) && retryPool.length > 0
+                ? [...retryPool]
+                : generateGameWordPool(getGameQuestionCount("pronunciation"));
             if (gamePool.length < 1) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -3350,6 +3385,7 @@
             pronunciationGameData.shuffledList = gamePool;
             pronunciationGameData.currentIndex = 0;
             pronunciationGameData.score = 0;
+            pronunciationGameData.wrongItems = [];
 
             document.getElementById('pronounce-total-count').textContent = pronunciationGameData.shuffledList.length;
             document.getElementById('pronounce-score').textContent = "0";
@@ -3663,6 +3699,7 @@
                 // 發出正確單字聲音
                 speak(pronunciationGameData.correctWord);
             } else {
+                rememberWrongAnswer(pronunciationGameData, pronunciationGameData.correctItem);
                 feedbackBox.className = "p-3 rounded-2xl inline-flex items-center space-x-2 text-sm font-bold bg-rose-50 text-rose-800 border border-rose-100";
                 feedbackIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>';
                 feedbackText.textContent = `${getPronunciationTargetLabel()}發音有點偏差喔！請點擊左側示範多聽幾次。`;
@@ -3678,13 +3715,41 @@
             if (pronunciationGameData.currentIndex < pronunciationGameData.shuffledList.length) {
                 loadPronunciationQuestion();
             } else {
-                showGameOverModal(pronunciationGameData.score, pronunciationGameData.shuffledList.length, "恭喜完成！", "pronunciation");
+                showGameOverModal(pronunciationGameData.score, pronunciationGameData.shuffledList.length, "恭喜完成！", "pronunciation", pronunciationGameData.wrongItems);
             }
         }
 
 
         // ==================== GAME OVER MODAL ====================
         let gameOverReturnTimer = null;
+        let gameOverDisplayId = 0;
+        let pendingWrongAnswerRetry = null;
+
+        const GAME_RETRY_STARTERS = {
+            listening: items => startListeningGame(items),
+            spelling: items => startSpellingGame(items),
+            sentence: items => startSentenceGame(items),
+            pronunciation: items => startPronunciationGame(items)
+        };
+
+        function getUniqueRetryItems(items) {
+            const uniqueItems = [];
+            (Array.isArray(items) ? items : []).forEach(item => {
+                if (!item) return;
+                const itemKey = getVocabKey(item);
+                if (!uniqueItems.some(existing => getVocabKey(existing) === itemKey)) {
+                    uniqueItems.push(item);
+                }
+            });
+            return uniqueItems;
+        }
+
+        function scheduleGameOverReturn(delay = 3200) {
+            if (gameOverReturnTimer) clearTimeout(gameOverReturnTimer);
+            gameOverReturnTimer = setTimeout(() => {
+                closeGameOverModal();
+            }, delay);
+        }
 
         async function reportFocusTaskResult(gameType, points, totalItems) {
             if (!learningContext.launchedFromTask
@@ -3713,34 +3778,71 @@
             return data;
         }
 
-        function showGameOverModal(points, totalItems, title = "恭喜完成！", gameType = null) {
+        function showGameOverModal(points, totalItems, title = "恭喜完成！", gameType = null, wrongItems = []) {
             const modal = document.getElementById('game-over-modal');
             const scoreSpan = document.getElementById('modal-score');
             const masteredSpan = document.getElementById('modal-mastered');
             const titleEl = document.getElementById('game-over-title');
             const descriptionEl = document.getElementById('game-over-description');
+            const retryBtn = document.getElementById('game-over-retry-btn');
+            const autoNote = document.getElementById('game-over-auto-note');
+            const displayId = ++gameOverDisplayId;
+            const retryItems = getUniqueRetryItems(wrongItems);
 
             if (gameOverReturnTimer) {
                 clearTimeout(gameOverReturnTimer);
                 gameOverReturnTimer = null;
             }
+            pendingWrongAnswerRetry = null;
+            retryBtn.classList.add('hidden');
+            autoNote.classList.remove('hidden');
+            autoNote.textContent = "約 3 秒後自動返回";
 
             titleEl.textContent = title;
             scoreSpan.textContent = `+${points}`;
             masteredSpan.textContent = `+${totalItems}`;
             descriptionEl.textContent = "這次練習已經完成，系統會自動回到主頁面。";
 
-            if (gameType) {
+            const isFocusAttempt = Boolean(
+                gameType
+                && learningContext.launchedFromTask
+                && learningContext.focusActivity === gameType
+                && learningContext.focusTask?.id
+            );
+
+            if (isFocusAttempt) {
+                descriptionEl.textContent = "正在儲存這次專注任務成績……";
+                autoNote.classList.add('hidden');
                 reportFocusTaskResult(gameType, points, totalItems).then(result => {
-                    if (!result) return;
+                    if (displayId !== gameOverDisplayId) return;
+                    if (!result) {
+                        descriptionEl.textContent = "本次成績暫時無法儲存，請稍後再試。";
+                        autoNote.classList.remove('hidden');
+                        scheduleGameOverReturn(4200);
+                        return;
+                    }
                     if (result.passed) {
                         titleEl.textContent = "專注任務達成！";
                         descriptionEl.textContent = `已達到 ${result.targetScore} 分，任務完成紀錄已儲存。`;
+                        autoNote.classList.remove('hidden');
+                        scheduleGameOverReturn(3600);
+                    } else if (retryItems.length > 0 && GAME_RETRY_STARTERS[gameType]) {
+                        titleEl.textContent = "先把錯題練會！";
+                        descriptionEl.textContent = `本次尚未達到 ${result.targetScore} 分，只需重練這回合的 ${retryItems.length} 個錯題。`;
+                        pendingWrongAnswerRetry = { gameType, items: retryItems };
+                        retryBtn.innerHTML = `<i class="fa-solid fa-rotate-right mr-1"></i> 立即重練 ${retryItems.length} 個錯題`;
+                        retryBtn.classList.remove('hidden');
+                        autoNote.textContent = "重練後會再次判定是否達標。";
+                        autoNote.classList.remove('hidden');
                     } else {
                         titleEl.textContent = "再練一次就會更好！";
                         descriptionEl.textContent = `本次尚未達到 ${result.targetScore} 分，任務仍會保留。`;
+                        autoNote.classList.remove('hidden');
+                        scheduleGameOverReturn(4200);
                     }
                 });
+            } else {
+                scheduleGameOverReturn();
             }
 
             modal.classList.remove('hidden');
@@ -3750,16 +3852,27 @@
                 document.getElementById('game-over-card').classList.add('scale-100');
             }, 50);
 
-            gameOverReturnTimer = setTimeout(() => {
-                closeGameOverModal();
-            }, 2200);
         }
 
-        function closeGameOverModal() {
+        function retryWrongAnswers() {
+            const retryState = pendingWrongAnswerRetry;
+            const starter = retryState ? GAME_RETRY_STARTERS[retryState.gameType] : null;
+            if (!retryState || !starter || retryState.items.length === 0) return;
+
+            pendingWrongAnswerRetry = null;
+            closeGameOverModal(false);
+            setTimeout(() => {
+                starter(retryState.items);
+            }, 320);
+        }
+
+        function closeGameOverModal(returnToDashboard = true) {
             if (gameOverReturnTimer) {
                 clearTimeout(gameOverReturnTimer);
                 gameOverReturnTimer = null;
             }
+            gameOverDisplayId++;
+            if (returnToDashboard) pendingWrongAnswerRetry = null;
 
             const modal = document.getElementById('game-over-modal');
             modal.classList.remove('opacity-100');
@@ -3768,7 +3881,7 @@
 
             setTimeout(() => {
                 modal.classList.add('hidden');
-                switchTab('dashboard');
+                if (returnToDashboard) switchTab('dashboard');
             }, 300);
         }
 
