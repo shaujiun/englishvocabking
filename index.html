@@ -1510,6 +1510,7 @@
 
                 const { data, error } = await db.auth.signInWithPassword({
                     email: usernameToEmail(u),
+                    username: u,
                     password: p
                 });
 
@@ -1525,10 +1526,14 @@
                     .eq('id', data.user.id)
                     .single();
 
-                if (profileError || !profile || profile.role !== expectedRole) {
+                if (profileError || !profile || profile.username !== u || profile.role !== expectedRole) {
                     console.error(profileError);
                     await db.auth.signOut();
-                    showToast(profileError ? '找不到帳號資料，請確認 supabase-schema.sql 已經在 Supabase 執行。' : (isAdminLogin ? '這個帳號不是管理員。' : '這個帳號不是學生帳號。'), 'error');
+                    showToast(profileError
+                        ? '找不到帳號資料，請確認 supabase-schema.sql 已經在 Supabase 執行。'
+                        : profile?.username !== u
+                            ? '帳號或密碼錯誤，請確認英文大小寫。'
+                            : (isAdminLogin ? '這個帳號不是管理員。' : '這個帳號不是學生帳號。'), 'error');
                     return;
                 }
 
