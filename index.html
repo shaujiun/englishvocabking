@@ -1085,6 +1085,48 @@
             };
         }
 
+        function mapContactBookProfile(row) {
+            const role = row.user_type === "admin"
+                ? "admin"
+                : row.user_type === "student"
+                    ? "student"
+                    : "teacher";
+            return {
+                id: row.id,
+                username: row.username,
+                role,
+                levelBook: "B1",
+                levelLesson: "L1"
+            };
+        }
+
+        async function loadSharedSessionProfile(userId) {
+            const { data: vocabProfile, error: vocabProfileError } = await db
+                .from("profiles")
+                .select("*")
+                .eq("id", userId)
+                .maybeSingle();
+
+            if (vocabProfileError) {
+                console.warn("Unable to load English vocabulary profile.", vocabProfileError);
+            }
+            if (vocabProfile) return mapProfile(vocabProfile);
+
+            const { data: contactProfile, error: contactProfileError } = await db
+                .from("contact_book_profiles")
+                .select("id,username,user_type,approval_status,is_active")
+                .eq("id", userId)
+                .eq("approval_status", "approved")
+                .eq("is_active", true)
+                .maybeSingle();
+
+            if (contactProfileError) {
+                console.warn("Unable to load contact-book profile.", contactProfileError);
+                return null;
+            }
+            return contactProfile ? mapContactBookProfile(contactProfile) : null;
+        }
+
         function getExamplesForItem(item, groupCode = "A") {
             const storedExamples = vocabularyExamplesById.get(String(item?.id)) || [];
             const normalizedGroup = normalizeEnglishGroup(groupCode);
@@ -1615,6 +1657,10 @@
                 roleTag.textContent = "管理者";
                 roleTag.className = "bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
                 adminBtn.classList.remove('hidden');
+            } else if (user.role === 'teacher') {
+                roleTag.textContent = "任課老師・自由練習";
+                roleTag.className = "bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
+                adminBtn.classList.add('hidden');
             } else {
                 roleTag.textContent = "學生";
                 roleTag.className = "bg-sky-100 text-sky-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
@@ -3900,13 +3946,9 @@
 
             const { data } = await db.auth.getSession();
             if (data.session?.user) {
-                const { data: profile } = await db
-                    .from("profiles")
-                    .select("*")
-                    .eq("id", data.session.user.id)
-                    .single();
+                const profile = await loadSharedSessionProfile(data.session.user.id);
                 if (profile) {
-                    await loginSuccess(mapProfile(profile));
+                    await loginSuccess(profile);
                 }
             }
             window.speechSynthesis?.getVoices();
