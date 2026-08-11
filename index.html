@@ -697,14 +697,38 @@
 
                         <!-- 右側：現有單字總覽列表 -->
                         <div class="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
-                            <div class="flex justify-between items-center mb-6">
+                            <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-6">
                                 <div>
                                     <h3 class="font-extrabold text-lg text-slate-800">單字庫管理清單</h3>
-                                    <p class="text-slate-400 text-xs">可以快速編輯現有教材、刪除或初始化預設單字</p>
+                                    <p id="admin-vocab-filter-summary" class="text-slate-400 text-xs">目前顯示 B1 第 1 課</p>
                                 </div>
-                                <button onclick="restoreDefaultVocab()" class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg border border-amber-200 transition-all">
-                                    <i class="fa-solid fa-arrows-rotate mr-1"></i> 還原成預設10單字
-                                </button>
+                                <div class="flex flex-col sm:flex-row sm:items-end gap-3 w-full xl:w-auto">
+                                    <label class="block flex-1 sm:flex-none">
+                                        <span class="block text-xs font-bold text-slate-500 mb-1.5">冊別</span>
+                                        <select id="admin-vocab-book-filter" onchange="renderAdminList()" class="w-full sm:w-36 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                            <option value="B1">B1（第一冊）</option>
+                                            <option value="B2">B2（第二冊）</option>
+                                            <option value="B3">B3（第三冊）</option>
+                                            <option value="B4">B4（第四冊）</option>
+                                            <option value="B5">B5（第五冊）</option>
+                                            <option value="B6">B6（第六冊）</option>
+                                        </select>
+                                    </label>
+                                    <label class="block flex-1 sm:flex-none">
+                                        <span class="block text-xs font-bold text-slate-500 mb-1.5">課別</span>
+                                        <select id="admin-vocab-lesson-filter" onchange="renderAdminList()" class="w-full sm:w-36 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                            <option value="L1">L1（第一課）</option>
+                                            <option value="L2">L2（第二課）</option>
+                                            <option value="L3">L3（第三課）</option>
+                                            <option value="L4">L4（第四課）</option>
+                                            <option value="L5">L5（第五課）</option>
+                                            <option value="L6">L6（第六課）</option>
+                                        </select>
+                                    </label>
+                                    <button onclick="restoreDefaultVocab()" class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-3 py-2.5 rounded-xl border border-amber-200 transition-all whitespace-nowrap">
+                                        <i class="fa-solid fa-arrows-rotate mr-1"></i> 還原成預設 10 單字
+                                    </button>
+                                </div>
                             </div>
 
                             <div class="overflow-x-auto border border-slate-100 rounded-2xl flex-1">
@@ -2836,11 +2860,48 @@
 
 
         // ==================== ADMIN PANEL FUNCTIONS ====================
+        function selectAdminVocabularyScope(book, lesson) {
+            const bookSelect = document.getElementById('admin-vocab-book-filter');
+            const lessonSelect = document.getElementById('admin-vocab-lesson-filter');
+            if (bookSelect && Array.from(bookSelect.options).some(option => option.value === book)) {
+                bookSelect.value = book;
+            }
+            if (lessonSelect && Array.from(lessonSelect.options).some(option => option.value === lesson)) {
+                lessonSelect.value = lesson;
+            }
+        }
+
         function renderAdminList() {
             const tbody = document.getElementById('admin-table-body');
+            const selectedBook = document.getElementById('admin-vocab-book-filter')?.value || "B1";
+            const selectedLesson = document.getElementById('admin-vocab-lesson-filter')?.value || "L1";
+            const filteredVocabulary = vocabulary
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => (
+                    (item.book || "B1") === selectedBook
+                    && (item.lesson || "L1") === selectedLesson
+                ));
+            const summary = document.getElementById('admin-vocab-filter-summary');
+            if (summary) {
+                const lessonNumber = selectedLesson.replace(/^L/, "");
+                summary.textContent = `目前顯示 ${selectedBook} 第 ${lessonNumber} 課，共 ${filteredVocabulary.length} 個單字`;
+            }
             tbody.innerHTML = '';
 
-            vocabulary.forEach((item, index) => {
+            if (filteredVocabulary.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = `
+                    <td colspan="6" class="py-12 px-4 text-center text-slate-400">
+                        <i class="fa-solid fa-book-open text-2xl mb-3 text-slate-300"></i>
+                        <p class="font-bold">${escapeHtml(selectedBook)} 第 ${escapeHtml(selectedLesson.replace(/^L/, ""))} 課目前沒有單字</p>
+                        <p class="text-[11px] mt-1">可使用左側表單新增，或從上方匯入 Word 檔案。</p>
+                    </td>
+                `;
+                tbody.appendChild(emptyRow);
+                return;
+            }
+
+            filteredVocabulary.forEach(({ item, index }) => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50/50 transition-colors";
                 const hasExample = Boolean(item.sentence?.trim()) || (vocabularyExamplesById.get(String(item.id)) || []).length > 0;
@@ -2941,6 +3002,7 @@
             }
 
             resetAdminForm();
+            selectAdminVocabularyScope(book, lesson);
             renderAdminList();
         }
 
