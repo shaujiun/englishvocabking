@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- DOCX ZIP parser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
@@ -540,6 +542,90 @@
 
                 <!-- 子分頁1：單字內容維護 -->
                 <div id="admin-sub-vocab-box" class="block">
+                    <div class="bg-white rounded-3xl p-6 md:p-7 border border-indigo-100 shadow-sm mb-8">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5 mb-6">
+                            <div>
+                                <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-file-word text-indigo-500"></i> Word 單字匯入與自動開放
+                                </h3>
+                                <p class="text-slate-500 text-xs mt-1 leading-relaxed">一次匯入整冊，系統以段考前 7 天為完成日，再依 Word 順序向前反推週一至週五每日 2～3 字。</p>
+                            </div>
+                            <div class="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800 leading-relaxed xl:max-w-md">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                管理者只須調整段考日期；各範圍原則上從前次段考結束後第 5 天開始，並於下次段考前 7 天完成。
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+                            <label class="block">
+                                <span class="block text-xs font-bold text-slate-600 mb-1.5">學年度</span>
+                                <input id="release-academic-year" type="number" value="115" min="100" max="199" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                            </label>
+                            <label class="block">
+                                <span class="block text-xs font-bold text-slate-600 mb-1.5">系統反推第一批開放日</span>
+                                <input id="release-start-date" type="date" value="2026-08-14" readonly class="w-full px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed">
+                            </label>
+                            <label class="block sm:col-span-2 xl:col-span-2">
+                                <span class="block text-xs font-bold text-slate-600 mb-1.5">Word 檔案（可同時選 B1、B2）</span>
+                                <input id="vocab-word-files" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="block w-full text-xs text-slate-500 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-50 file:px-4 file:py-2.5 file:font-bold file:text-indigo-700 hover:file:bg-indigo-100">
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="exam-date-grid">
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第一學期第一次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-1-start" type="date" value="2026-09-17" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-1-end" type="date" value="2026-09-18" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第一學期第二次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-2-start" type="date" value="2026-11-10" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-2-end" type="date" value="2026-11-11" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第二學期第一次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-3-start" type="date" value="2027-01-14" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-3-end" type="date" value="2027-01-15" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第二學期第二次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-4-start" type="date" value="2027-03-09" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-4-end" type="date" value="2027-03-10" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第三學期第一次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-5-start" type="date" value="2027-05-05" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-5-end" type="date" value="2027-05-06" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                                <p class="text-xs font-extrabold text-slate-700 mb-2">第三學期第二次段考</p>
+                                <div class="grid grid-cols-2 gap-2"><input id="exam-6-start" type="date" value="2027-06-16" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"><input id="exam-6-end" type="date" value="2027-06-17" class="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs"></div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row flex-wrap gap-3 mt-5">
+                            <button type="button" onclick="previewVocabularyWordFiles()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md shadow-indigo-100">
+                                <i class="fa-solid fa-magnifying-glass mr-1"></i> 讀取並預覽 Word
+                            </button>
+                            <button type="button" onclick="saveReleaseSettingsAndReschedule()" class="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-bold px-5 py-2.5 rounded-xl text-xs">
+                                <i class="fa-solid fa-calendar-check mr-1"></i> 儲存段考日並重新排程
+                            </button>
+                        </div>
+
+                        <div id="word-import-preview" class="hidden mt-6 rounded-2xl border border-indigo-100 overflow-hidden">
+                            <div class="bg-indigo-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                <div>
+                                    <p id="word-import-summary" class="font-extrabold text-sm text-indigo-900"></p>
+                                    <p id="word-import-warning" class="text-xs text-amber-700 mt-1"></p>
+                                </div>
+                                <button id="word-import-confirm-btn" type="button" onclick="importPreviewedVocabulary()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs whitespace-nowrap">
+                                    <i class="fa-solid fa-cloud-arrow-up mr-1"></i> 確認匯入資料庫
+                                </button>
+                            </div>
+                            <div class="max-h-96 overflow-auto">
+                                <table class="w-full min-w-[760px] text-left text-xs">
+                                    <thead class="sticky top-0 bg-white border-b border-slate-100 text-slate-500"><tr><th class="px-3 py-2">冊／課／序</th><th class="px-3 py-2">英文</th><th class="px-3 py-2">中文</th><th class="px-3 py-2">預定開放</th><th class="px-3 py-2">例句</th></tr></thead>
+                                    <tbody id="word-import-preview-body" class="divide-y divide-slate-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <!-- 左側：新增與編輯表單 -->
                         <div class="lg:col-span-1 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm h-fit">
@@ -628,6 +714,7 @@
                                             <th class="py-3 px-4">英文單字</th>
                                             <th class="py-3 px-4">冊別/課別</th>
                                             <th class="py-3 px-4">中文解釋</th>
+                                            <th class="py-3 px-4">預定開放</th>
                                             <th class="py-3 px-4">關卡句子與翻譯</th>
                                             <th class="py-3 px-4 text-center">操作</th>
                                         </tr>
@@ -1011,6 +1098,21 @@
 
         let vocabulary = [...DEFAULT_VOCABULARY];
         let vocabularyExamplesById = new Map();
+        const DEFAULT_RELEASE_SETTINGS = {
+            academicYear: 115,
+            releaseStartDate: "2026-08-13",
+            exams: [
+                { start: "2026-09-17", end: "2026-09-18" },
+                { start: "2026-11-10", end: "2026-11-11" },
+                { start: "2027-01-14", end: "2027-01-15" },
+                { start: "2027-03-09", end: "2027-03-10" },
+                { start: "2027-05-05", end: "2027-05-06" },
+                { start: "2027-06-16", end: "2027-06-17" }
+            ]
+        };
+        let releaseSettings = JSON.parse(JSON.stringify(DEFAULT_RELEASE_SETTINGS));
+        let pendingWordImportRows = [];
+        let pendingWordImportWarnings = [];
         const lastExampleSentenceByVocab = new Map();
         let masteredWords = new Set();
         let users = [...DEFAULT_USERS];
@@ -1060,7 +1162,10 @@
                 sentence: row.sentence,
                 sentenceTranslation: row.sentence_translation,
                 book: row.book || "B1",
-                lesson: row.lesson || "L1"
+                lesson: row.lesson || "L1",
+                publisher: row.publisher || "南一",
+                sourceOrder: Number.isFinite(Number(row.source_order)) ? Number(row.source_order) : null,
+                releaseOn: row.release_on || null
             };
         }
 
@@ -1083,48 +1188,6 @@
                 suitableForB: row.suitable_for_b === true,
                 displayOrder: row.display_order || 0
             };
-        }
-
-        function mapContactBookProfile(row) {
-            const role = row.user_type === "admin"
-                ? "admin"
-                : row.user_type === "student"
-                    ? "student"
-                    : "teacher";
-            return {
-                id: row.id,
-                username: row.username,
-                role,
-                levelBook: "B1",
-                levelLesson: "L1"
-            };
-        }
-
-        async function loadSharedSessionProfile(userId) {
-            const { data: vocabProfile, error: vocabProfileError } = await db
-                .from("profiles")
-                .select("*")
-                .eq("id", userId)
-                .maybeSingle();
-
-            if (vocabProfileError) {
-                console.warn("Unable to load English vocabulary profile.", vocabProfileError);
-            }
-            if (vocabProfile) return mapProfile(vocabProfile);
-
-            const { data: contactProfile, error: contactProfileError } = await db
-                .from("contact_book_profiles")
-                .select("id,username,user_type,approval_status,is_active")
-                .eq("id", userId)
-                .eq("approval_status", "approved")
-                .eq("is_active", true)
-                .maybeSingle();
-
-            if (contactProfileError) {
-                console.warn("Unable to load contact-book profile.", contactProfileError);
-                return null;
-            }
-            return contactProfile ? mapContactBookProfile(contactProfile) : null;
         }
 
         function getExamplesForItem(item, groupCode = "A") {
@@ -1176,6 +1239,84 @@
             const month = String(date.getMonth() + 1).padStart(2, "0");
             const day = String(date.getDate()).padStart(2, "0");
             return `${year}-${month}-${day}`;
+        }
+
+        function isVocabularyReleased(item) {
+            if (currentUser?.role === "admin" || !item?.releaseOn) return true;
+            return item.releaseOn <= getLocalIsoDate();
+        }
+
+        function mapReleaseSettingsRow(row) {
+            if (!row) return JSON.parse(JSON.stringify(DEFAULT_RELEASE_SETTINGS));
+            return {
+                academicYear: Number(row.academic_year) || 115,
+                releaseStartDate: row.release_start_date || DEFAULT_RELEASE_SETTINGS.releaseStartDate,
+                exams: Array.from({ length: 6 }, (_, index) => ({
+                    start: row[`exam_${index + 1}_start`] || DEFAULT_RELEASE_SETTINGS.exams[index].start,
+                    end: row[`exam_${index + 1}_end`] || DEFAULT_RELEASE_SETTINGS.exams[index].end
+                }))
+            };
+        }
+
+        function releaseSettingsToDbRow(settings) {
+            const row = {
+                academic_year: Number(settings.academicYear) || 115,
+                release_start_date: settings.releaseStartDate
+            };
+            settings.exams.forEach((exam, index) => {
+                row[`exam_${index + 1}_start`] = exam.start;
+                row[`exam_${index + 1}_end`] = exam.end;
+            });
+            return row;
+        }
+
+        function populateReleaseSettingsForm(settings = releaseSettings) {
+            const yearInput = document.getElementById("release-academic-year");
+            const startInput = document.getElementById("release-start-date");
+            if (!yearInput || !startInput) return;
+            yearInput.value = settings.academicYear;
+            startInput.value = settings.releaseStartDate;
+            settings.exams.forEach((exam, index) => {
+                const start = document.getElementById(`exam-${index + 1}-start`);
+                const end = document.getElementById(`exam-${index + 1}-end`);
+                if (start) start.value = exam.start;
+                if (end) end.value = exam.end;
+            });
+        }
+
+        function readReleaseSettingsForm() {
+            const settings = {
+                academicYear: Number(document.getElementById("release-academic-year")?.value) || 115,
+                releaseStartDate: document.getElementById("release-start-date")?.value || "",
+                exams: Array.from({ length: 6 }, (_, index) => ({
+                    start: document.getElementById(`exam-${index + 1}-start`)?.value || "",
+                    end: document.getElementById(`exam-${index + 1}-end`)?.value || ""
+                }))
+            };
+            const dates = settings.exams.flatMap(exam => [exam.start, exam.end]);
+            if (dates.some(value => !/^\d{4}-\d{2}-\d{2}$/.test(value))) {
+                throw new Error("請完整填寫 6 次段考日期。");
+            }
+            settings.exams.forEach((exam, index) => {
+                if (exam.end < exam.start) throw new Error(`第 ${index + 1} 次段考結束日不可早於開始日。`);
+            });
+            return settings;
+        }
+
+        async function loadReleaseSettings() {
+            if (currentUser?.role !== "admin") return;
+            const { data, error } = await db
+                .from("vocabulary_release_settings")
+                .select("*")
+                .eq("academic_year", 115)
+                .single();
+            if (error) {
+                console.warn("Vocabulary release settings are unavailable.", error);
+                releaseSettings = JSON.parse(JSON.stringify(DEFAULT_RELEASE_SETTINGS));
+            } else {
+                releaseSettings = mapReleaseSettingsRow(data);
+            }
+            populateReleaseSettingsForm();
         }
 
         function getRequestedFocusContext() {
@@ -1343,19 +1484,30 @@
         }
 
         async function loadSavedVocab() {
-            const { data, error } = await db
+            let { data, error } = await db
                 .from("vocabulary")
                 .select("*")
                 .order("book", { ascending: true })
                 .order("lesson", { ascending: true })
+                .order("source_order", { ascending: true })
                 .order("word", { ascending: true });
+
+            if (error && /source_order|column/i.test(String(error.message || error))) {
+                ({ data, error } = await db
+                    .from("vocabulary")
+                    .select("*")
+                    .order("book", { ascending: true })
+                    .order("lesson", { ascending: true })
+                    .order("word", { ascending: true }));
+            }
 
             if (error) {
                 console.error(error);
                 vocabulary = [...DEFAULT_VOCABULARY];
                 showToast("無法連線資料庫，暫時使用本機預設單字。", "error");
             } else {
-                vocabulary = data.length ? data.map(mapVocabRow) : [...DEFAULT_VOCABULARY];
+                const mappedRows = data.length ? data.map(mapVocabRow) : [...DEFAULT_VOCABULARY];
+                vocabulary = mappedRows.filter(isVocabularyReleased);
             }
 
             vocabularyExamplesById = new Map();
@@ -1643,6 +1795,7 @@
             currentUser = user;
             await loadSavedVocab();
             await loadProfiles();
+            await loadReleaseSettings();
             await loadStudentState();
             await loadLearningContext();
 
@@ -1657,10 +1810,6 @@
                 roleTag.textContent = "管理者";
                 roleTag.className = "bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
                 adminBtn.classList.remove('hidden');
-            } else if (user.role === 'teacher') {
-                roleTag.textContent = "任課老師・自由練習";
-                roleTag.className = "bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
-                adminBtn.classList.add('hidden');
             } else {
                 roleTag.textContent = "學生";
                 roleTag.className = "bg-sky-100 text-sky-800 px-2.5 py-0.5 rounded text-[10px] font-bold";
@@ -2214,6 +2363,478 @@
         }
 
 
+        // ==================== WORD IMPORT AND RELEASE SCHEDULING ====================
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function parseIsoDate(value) {
+            return new Date(`${value}T12:00:00`);
+        }
+
+        function formatIsoDate(date) {
+            return getLocalIsoDate(date);
+        }
+
+        function addCalendarDays(date, days) {
+            const result = new Date(date);
+            result.setDate(result.getDate() + days);
+            return result;
+        }
+
+        function nextWeekdayOnOrAfter(date) {
+            let result = new Date(date);
+            while (result.getDay() === 0 || result.getDay() === 6) {
+                result = addCalendarDays(result, 1);
+            }
+            return result;
+        }
+
+        function nextWeekdayAfter(date) {
+            return nextWeekdayOnOrAfter(addCalendarDays(date, 1));
+        }
+
+        function previousWeekdayOnOrBefore(date) {
+            let result = new Date(date);
+            while (result.getDay() === 0 || result.getDay() === 6) {
+                result = addCalendarDays(result, -1);
+            }
+            return result;
+        }
+
+        function previousWeekdayBefore(date) {
+            return previousWeekdayOnOrBefore(addCalendarDays(date, -1));
+        }
+
+        function buildDailyBatchSizes(total) {
+            const batches = [];
+            let remaining = total;
+            while (remaining > 0) {
+                if (remaining === 1) {
+                    if (batches.length > 0 && batches[batches.length - 1] === 3) {
+                        batches[batches.length - 1] = 2;
+                        batches.push(2);
+                    } else {
+                        batches.push(1);
+                    }
+                    break;
+                }
+                if (remaining === 4) {
+                    batches.push(2, 2);
+                    break;
+                }
+                if (remaining === 5) {
+                    batches.push(3, 2);
+                    break;
+                }
+                const size = Math.min(3, remaining);
+                batches.push(size);
+                remaining -= size;
+            }
+            return batches;
+        }
+
+        function buildDailyBatchSizesForDays(total, dayCount) {
+            if (dayCount <= 0 || total < dayCount * 2 || total > dayCount * 3) {
+                throw new Error(`無法把 ${total} 個單字安排在 ${dayCount} 個開放日內。`);
+            }
+            const extraWords = total - dayCount * 2;
+            return Array.from({ length: dayCount }, (_, index) => {
+                const previousExtras = Math.floor(index * extraWords / dayCount);
+                const currentExtras = Math.floor((index + 1) * extraWords / dayCount);
+                return 2 + (currentExtras > previousExtras ? 1 : 0);
+            });
+        }
+
+        function listWeekdaysInclusive(startDate, endDate) {
+            const dates = [];
+            let cursor = nextWeekdayOnOrAfter(startDate);
+            while (cursor <= endDate) {
+                dates.push(new Date(cursor));
+                cursor = nextWeekdayAfter(cursor);
+            }
+            return dates;
+        }
+
+        function selectEvenlySpacedDates(dates, count) {
+            if (count >= dates.length) return dates.map(date => new Date(date));
+            if (count === 1) return [new Date(dates[dates.length - 1])];
+            return Array.from({ length: count }, (_, index) => {
+                const dateIndex = Math.round(index * (dates.length - 1) / (count - 1));
+                return new Date(dates[dateIndex]);
+            });
+        }
+
+        function allocateLessonReleaseDays(plans, totalActiveDays) {
+            const allocated = plans.map(plan => ({
+                ...plan,
+                minDays: Math.ceil(plan.lessonRows.length / 3),
+                maxDays: Math.floor(plan.lessonRows.length / 2)
+            }));
+            allocated.forEach(plan => { plan.activeDays = plan.minDays; });
+            let remaining = totalActiveDays - allocated.reduce((sum, plan) => sum + plan.activeDays, 0);
+            while (remaining > 0) {
+                const candidate = allocated
+                    .filter(plan => plan.activeDays < plan.maxDays)
+                    .sort((a, b) => (a.activeDays / a.maxDays) - (b.activeDays / b.maxDays))[0];
+                if (!candidate) throw new Error("可用開放日不足以完成單字排程。");
+                candidate.activeDays += 1;
+                remaining -= 1;
+            }
+            return allocated;
+        }
+
+        function getReleasePairConfigs(settings) {
+            return [
+                { book: "B1", lessons: ["L1", "L2"], examIndex: 0 },
+                { book: "B1", lessons: ["L3", "L4"], examIndex: 1 },
+                { book: "B1", lessons: ["L5", "L6"], examIndex: 2 },
+                { book: "B2", lessons: ["L1", "L2"], examIndex: 3 },
+                { book: "B2", lessons: ["L3", "L4"], examIndex: 4 },
+                { book: "B2", lessons: ["L5", "L6"], examIndex: 5 }
+            ].map(pair => ({
+                ...pair,
+                deadline: formatIsoDate(previousWeekdayOnOrBefore(
+                    addCalendarDays(parseIsoDate(settings.exams[pair.examIndex].start), -7)
+                )),
+                desiredStart: pair.examIndex === 0 ? null : formatIsoDate(nextWeekdayOnOrAfter(
+                    addCalendarDays(parseIsoDate(settings.exams[pair.examIndex - 1].end), 5)
+                ))
+            }));
+        }
+
+        function buildReleaseSchedule(rows, settings = releaseSettings) {
+            const scheduled = rows.map(row => ({ ...row }));
+            const warnings = [];
+            let firstReleaseDate = null;
+
+            getReleasePairConfigs(settings).forEach(pair => {
+                let lessonPlans = pair.lessons.map(lesson => {
+                    const lessonRows = scheduled
+                        .filter(row => row.book === pair.book && row.lesson === lesson)
+                        .sort((a, b) => (a.sourceOrder || 0) - (b.sourceOrder || 0));
+                    return { lesson, lessonRows };
+                });
+
+                const minimumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.ceil(plan.lessonRows.length / 3), 0);
+                const maximumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.floor(plan.lessonRows.length / 2), 0);
+                const deadline = parseIsoDate(pair.deadline);
+                let availableDates;
+                let adjustedEarlier = false;
+
+                if (pair.desiredStart) {
+                    const desiredStart = parseIsoDate(pair.desiredStart);
+                    availableDates = listWeekdaysInclusive(desiredStart, deadline);
+                    if (availableDates.length < minimumReleaseDays) {
+                        let adjustedStart = new Date(deadline);
+                        for (let dayIndex = 1; dayIndex < minimumReleaseDays; dayIndex += 1) {
+                            adjustedStart = previousWeekdayBefore(adjustedStart);
+                        }
+                        availableDates = listWeekdaysInclusive(adjustedStart, deadline);
+                        adjustedEarlier = true;
+                    }
+                } else {
+                    let firstDate = new Date(deadline);
+                    for (let dayIndex = 1; dayIndex < minimumReleaseDays; dayIndex += 1) {
+                        firstDate = previousWeekdayBefore(firstDate);
+                    }
+                    availableDates = listWeekdaysInclusive(firstDate, deadline);
+                }
+
+                const activeDayCount = Math.min(availableDates.length, maximumReleaseDays);
+                lessonPlans = allocateLessonReleaseDays(lessonPlans, activeDayCount);
+                const releaseDates = selectEvenlySpacedDates(availableDates, activeDayCount);
+                const pairStartDate = new Date(releaseDates[0]);
+                if (!firstReleaseDate || pairStartDate < firstReleaseDate) firstReleaseDate = pairStartDate;
+                let releaseDateIndex = 0;
+
+                lessonPlans.forEach(plan => {
+                    const { lessonRows, activeDays } = plan;
+                    const batchSizes = buildDailyBatchSizesForDays(lessonRows.length, activeDays);
+                    let rowIndex = 0;
+
+                    batchSizes.forEach(batchSize => {
+                        const releaseOn = formatIsoDate(releaseDates[releaseDateIndex]);
+                        lessonRows.slice(rowIndex, rowIndex + batchSize).forEach(row => {
+                            row.releaseOn = releaseOn;
+                        });
+                        rowIndex += batchSize;
+                        releaseDateIndex += 1;
+                    });
+                });
+
+                if (adjustedEarlier) {
+                    const previousExamEnd = parseIsoDate(settings.exams[pair.examIndex - 1].end);
+                    const message = pairStartDate <= previousExamEnd
+                        ? "單字量超過兩次段考間可安排的容量，請調整段考日期或單字數。"
+                        : `單字量較多，已自動提前至 ${formatIsoDate(pairStartDate)} 開始。`;
+                    warnings.push(`${pair.book} ${pair.lessons.join("、")}：${message}`);
+                }
+            });
+
+            return {
+                rows: scheduled,
+                warnings,
+                firstReleaseDate: firstReleaseDate ? formatIsoDate(firstReleaseDate) : settings.releaseStartDate
+            };
+        }
+
+        function getXmlElementText(element) {
+            return String(element?.textContent || "").replace(/\s+/g, " ").trim();
+        }
+
+        function getCellParagraphTexts(cell) {
+            return Array.from(cell?.getElementsByTagNameNS("*", "p") || [])
+                .map(getXmlElementText)
+                .filter(Boolean);
+        }
+
+        function parseWordTablePair(chineseCell, englishCell, book, lesson) {
+            const chineseLines = getCellParagraphTexts(chineseCell)
+                .filter(line => !/^(Dialogue|Reading|Word Power)$/i.test(line));
+            const numberedIndex = chineseLines.findIndex(line => /^\s*\d+\s*[.．、]\s*/.test(line));
+            if (numberedIndex < 0) return null;
+
+            const numberedMatch = chineseLines[numberedIndex].match(/^\s*(\d+)\s*[.．、]\s*(.*)$/);
+            if (!numberedMatch) return null;
+            const englishLines = getCellParagraphTexts(englishCell)
+                .filter(line => !/^(Dialogue|Reading|Word Power)$/i.test(line));
+            const word = englishLines.join(" ")
+                .replace(/[’]/g, "'")
+                .replace(/…/g, "...")
+                .trim();
+            const translationParts = [numberedMatch[2], ...chineseLines.slice(numberedIndex + 1)]
+                .map(line => line.trim())
+                .filter(Boolean);
+            const translation = translationParts.join("");
+            if (!word || !translation) return null;
+
+            return {
+                word,
+                translation,
+                sentence: "",
+                sentenceTranslation: "",
+                book,
+                lesson,
+                publisher: "南一",
+                sourceOrder: Number(numberedMatch[1]),
+                releaseOn: null
+            };
+        }
+
+        async function parseVocabularyDocx(file) {
+            if (!window.JSZip) throw new Error("Word 解析套件尚未載入，請確認網路後重新整理。");
+            const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+            const documentEntry = zip.file("word/document.xml");
+            if (!documentEntry) throw new Error(`${file.name} 不是可讀取的 Word DOCX 檔案。`);
+
+            const xmlText = await documentEntry.async("string");
+            const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+            if (xml.querySelector("parsererror")) throw new Error(`${file.name} 的 Word 內容無法解析。`);
+
+            const body = xml.getElementsByTagNameNS("*", "body")[0];
+            const fallbackBook = /1\s*下|B2/i.test(file.name) ? "B2" : "B1";
+            let currentBook = fallbackBook;
+            let currentLesson = null;
+            const rows = [];
+
+            Array.from(body?.childNodes || []).forEach(node => {
+                if (node.nodeType !== 1) return;
+                const localName = node.localName;
+                if (localName === "p") {
+                    const title = getXmlElementText(node);
+                    const bookMatch = title.match(/英語\s*[（(]\s*([一二])\s*[）)]/);
+                    const lessonMatch = title.match(/L\s*([1-6])/i);
+                    if (bookMatch) currentBook = bookMatch[1] === "二" ? "B2" : "B1";
+                    if (lessonMatch) currentLesson = `L${lessonMatch[1]}`;
+                    return;
+                }
+                if (localName !== "tbl" || !currentLesson) return;
+
+                const tableRows = Array.from(node.childNodes).filter(child => child.nodeType === 1 && child.localName === "tr");
+                tableRows.forEach(tableRow => {
+                    const cells = Array.from(tableRow.childNodes).filter(child => child.nodeType === 1 && child.localName === "tc");
+                    for (let cellIndex = 0; cellIndex + 1 < cells.length; cellIndex += 2) {
+                        const parsed = parseWordTablePair(cells[cellIndex], cells[cellIndex + 1], currentBook, currentLesson);
+                        if (parsed) rows.push(parsed);
+                    }
+                });
+            });
+
+            if (rows.length === 0) throw new Error(`${file.name} 找不到「中文編號／英文單字」表格。`);
+            return rows;
+        }
+
+        function renderWordImportPreview() {
+            const container = document.getElementById("word-import-preview");
+            const tbody = document.getElementById("word-import-preview-body");
+            const summary = document.getElementById("word-import-summary");
+            const warning = document.getElementById("word-import-warning");
+            if (!container || !tbody || !summary || !warning) return;
+
+            const b1Count = pendingWordImportRows.filter(row => row.book === "B1").length;
+            const b2Count = pendingWordImportRows.filter(row => row.book === "B2").length;
+            const existingKeys = new Set(vocabulary.map(getVocabKey));
+            const existingCount = pendingWordImportRows.filter(row => existingKeys.has(getVocabKey(row))).length;
+            summary.textContent = `已讀取 ${pendingWordImportRows.length} 個不重複義項：B1 ${b1Count} 個、B2 ${b2Count} 個；其中 ${existingCount} 個將保留原例句並更新課次排程。`;
+            warning.textContent = pendingWordImportWarnings.length
+                ? pendingWordImportWarnings.join("；")
+                : "排程檢查通過，各段考範圍均能在考試前開放完畢。";
+
+            tbody.innerHTML = pendingWordImportRows.map(row => {
+                const existing = existingKeys.has(getVocabKey(row));
+                return `
+                    <tr class="hover:bg-slate-50/70">
+                        <td class="px-3 py-2 font-bold text-indigo-700">${escapeHtml(row.book)}／${escapeHtml(row.lesson)}／${row.sourceOrder}</td>
+                        <td class="px-3 py-2 font-bold text-slate-800">${escapeHtml(row.word)}</td>
+                        <td class="px-3 py-2 text-slate-600">${escapeHtml(row.translation)}</td>
+                        <td class="px-3 py-2 text-sky-700 font-medium">${escapeHtml(row.releaseOn)}</td>
+                        <td class="px-3 py-2"><span class="${existing ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"} px-2 py-1 rounded-lg font-bold">${existing ? "保留現有例句" : "待補 3 句"}</span></td>
+                    </tr>
+                `;
+            }).join("");
+            container.classList.remove("hidden");
+        }
+
+        async function previewVocabularyWordFiles() {
+            const files = Array.from(document.getElementById("vocab-word-files")?.files || []);
+            if (files.length === 0) {
+                showToast("請先選擇 B1 或 B2 的 Word DOCX 檔案。", "info");
+                return;
+            }
+
+            try {
+                releaseSettings = readReleaseSettingsForm();
+                const parsedRows = (await Promise.all(files.map(parseVocabularyDocx))).flat();
+                const uniqueRows = new Map();
+                parsedRows
+                    .sort((a, b) => getBookNumber(a.book) - getBookNumber(b.book)
+                        || getLessonNumber(a.lesson) - getLessonNumber(b.lesson)
+                        || a.sourceOrder - b.sourceOrder)
+                    .forEach(row => {
+                        const key = getVocabKey(row);
+                        if (!uniqueRows.has(key)) uniqueRows.set(key, row);
+                    });
+
+                const scheduled = buildReleaseSchedule([...uniqueRows.values()], releaseSettings);
+                releaseSettings.releaseStartDate = scheduled.firstReleaseDate;
+                const derivedStartInput = document.getElementById("release-start-date");
+                if (derivedStartInput) derivedStartInput.value = scheduled.firstReleaseDate;
+                pendingWordImportRows = scheduled.rows;
+                pendingWordImportWarnings = scheduled.warnings;
+                renderWordImportPreview();
+                showToast("已完成 Word 解析與排程預覽。", "success");
+            } catch (error) {
+                console.error(error);
+                pendingWordImportRows = [];
+                showToast(error.message || "Word 檔案解析失敗。", "error");
+            }
+        }
+
+        function vocabItemToDbRow(item) {
+            return {
+                word: item.word,
+                translation: item.translation,
+                sentence: item.sentence || "",
+                sentence_translation: item.sentenceTranslation || "",
+                book: item.book || "B1",
+                lesson: item.lesson || "L1",
+                publisher: item.publisher || "南一",
+                source_order: item.sourceOrder,
+                release_on: item.releaseOn || null
+            };
+        }
+
+        async function importPreviewedVocabulary() {
+            if (pendingWordImportRows.length === 0) {
+                showToast("請先讀取並預覽 Word。", "info");
+                return;
+            }
+            const button = document.getElementById("word-import-confirm-btn");
+            const originalHtml = button?.innerHTML;
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 匯入中';
+            }
+
+            try {
+                const existingByKey = new Map(vocabulary.map(item => [getVocabKey(item), item]));
+                const rows = pendingWordImportRows.map(row => {
+                    const existing = existingByKey.get(getVocabKey(row));
+                    return vocabItemToDbRow({
+                        ...row,
+                        sentence: existing?.sentence || "",
+                        sentenceTranslation: existing?.sentenceTranslation || ""
+                    });
+                });
+                const { error } = await db.from("vocabulary").upsert(rows, { onConflict: "word,translation" });
+                if (error) throw error;
+
+                releaseSettings = readReleaseSettingsForm();
+                const { error: settingsError } = await db
+                    .from("vocabulary_release_settings")
+                    .upsert(releaseSettingsToDbRow(releaseSettings), { onConflict: "academic_year" });
+                if (settingsError) throw settingsError;
+
+                await loadSavedVocab();
+                renderAdminList();
+                renderVocabList();
+                showToast(`匯入完成：已儲存 ${rows.length} 個單字與預定開放日。`, "success");
+            } catch (error) {
+                console.error(error);
+                showToast(`匯入失敗：${error.message || "請確認資料庫權限與遷移檔。"}`, "error");
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHtml;
+                }
+            }
+        }
+
+        async function saveReleaseSettingsAndReschedule() {
+            try {
+                const nextSettings = readReleaseSettingsForm();
+                const schedulable = vocabulary.filter(item => ["B1", "B2"].includes(item.book) && item.sourceOrder !== null);
+                if (schedulable.length > 0) {
+                    const scheduled = buildReleaseSchedule(schedulable, nextSettings);
+                    nextSettings.releaseStartDate = scheduled.firstReleaseDate;
+                    const { error: vocabError } = await db
+                        .from("vocabulary")
+                        .upsert(scheduled.rows.map(vocabItemToDbRow), { onConflict: "word,translation" });
+                    if (vocabError) throw vocabError;
+                    pendingWordImportWarnings = scheduled.warnings;
+                }
+
+                if (pendingWordImportRows.length > 0) {
+                    const previewSchedule = buildReleaseSchedule(pendingWordImportRows, nextSettings);
+                    nextSettings.releaseStartDate = previewSchedule.firstReleaseDate;
+                    pendingWordImportRows = previewSchedule.rows;
+                    pendingWordImportWarnings = previewSchedule.warnings;
+                    renderWordImportPreview();
+                }
+                const { error: settingsError } = await db
+                    .from("vocabulary_release_settings")
+                    .upsert(releaseSettingsToDbRow(nextSettings), { onConflict: "academic_year" });
+                if (settingsError) throw settingsError;
+
+                releaseSettings = nextSettings;
+                populateReleaseSettingsForm();
+                await loadSavedVocab();
+                renderAdminList();
+                renderVocabList();
+                showToast("已儲存段考日期，並重新計算單字開放日。", "success");
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || "無法儲存段考日期。", "error");
+            }
+        }
+
+
         // ==================== ADMIN PANEL FUNCTIONS ====================
         function renderAdminList() {
             const tbody = document.getElementById('admin-table-body');
@@ -2222,13 +2843,18 @@
             vocabulary.forEach((item, index) => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50/50 transition-colors";
+                const hasExample = Boolean(item.sentence?.trim()) || (vocabularyExamplesById.get(String(item.id)) || []).length > 0;
                 tr.innerHTML = `
-                    <td class="py-3 px-4 font-bold text-slate-800">${item.word}</td>
-                    <td class="py-3 px-4"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">${item.book || "B1"}-${item.lesson || "L1"}</span></td>
-                    <td class="py-3 px-4 text-slate-500 font-medium">${item.translation}</td>
+                    <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(item.word)}</td>
+                    <td class="py-3 px-4"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">${escapeHtml(item.book || "B1")}-${escapeHtml(item.lesson || "L1")}</span></td>
+                    <td class="py-3 px-4 text-slate-500 font-medium">${escapeHtml(item.translation)}</td>
+                    <td class="py-3 px-4 whitespace-nowrap">
+                        <p class="font-bold ${item.releaseOn ? "text-sky-700" : "text-slate-400"}">${escapeHtml(item.releaseOn || "立即開放")}</p>
+                        <p class="mt-1 text-[10px] ${hasExample ? "text-emerald-600" : "text-amber-600"}">${hasExample ? "例句已建立" : "待補 3 句"}</p>
+                    </td>
                     <td class="py-3 px-4 max-w-xs">
-                        <p class="text-slate-700 font-medium line-clamp-1" title="${item.sentence}">${item.sentence}</p>
-                        <p class="text-slate-400 text-[10px] line-clamp-1" title="${item.sentenceTranslation}">${item.sentenceTranslation}</p>
+                        <p class="text-slate-700 font-medium line-clamp-1" title="${escapeHtml(item.sentence)}">${escapeHtml(item.sentence || "尚未建立例句")}</p>
+                        <p class="text-slate-400 text-[10px] line-clamp-1" title="${escapeHtml(item.sentenceTranslation)}">${escapeHtml(item.sentenceTranslation || "可先使用單字、拼字與配對遊戲")}</p>
                     </td>
                     <td class="py-3 px-4 text-center">
                         <div class="flex items-center justify-center gap-2">
@@ -2490,11 +3116,11 @@
 
 
         // ==================== 智慧題目選取演算法 (20題原則、優先度與間隔記憶複習) ====================
-        function generateGameWordPool(count = 20) {
+        function generateGameWordPool(count = 20, poolOverride = null) {
             if (!currentUser) return [];
             const username = currentUser.username;
             const progress = studentProgress[username] || {};
-            const availableWords = getVocabularyForScope();
+            const availableWords = Array.isArray(poolOverride) ? poolOverride : getVocabularyForScope();
             if (availableWords.length === 0) return [];
 
             let finalPool = [];
@@ -2932,9 +3558,13 @@
         function startSentenceGame(retryPool = null) {
             beginGameAttempt("sentence");
             const isRetryRound = Array.isArray(retryPool) && retryPool.length > 0;
+            const sentenceReadyWords = getVocabularyForScope().filter(item => {
+                return getExamplesForItem(item, learningContext.englishGroup)
+                    .some(example => Boolean(example.sentence?.trim()));
+            });
             const gamePool = isRetryRound
                 ? [...retryPool]
-                : generateGameWordPool(getGameQuestionCount("sentence"));
+                : generateGameWordPool(getGameQuestionCount("sentence"), sentenceReadyWords);
             if (gamePool.length < (isRetryRound ? 1 : 4)) {
                 showToast("資料尚未建立", "info");
                 return;
@@ -3946,9 +4576,13 @@
 
             const { data } = await db.auth.getSession();
             if (data.session?.user) {
-                const profile = await loadSharedSessionProfile(data.session.user.id);
+                const { data: profile } = await db
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", data.session.user.id)
+                    .single();
                 if (profile) {
-                    await loginSuccess(profile);
+                    await loginSuccess(mapProfile(profile));
                 }
             }
             window.speechSynthesis?.getVoices();
