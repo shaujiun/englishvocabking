@@ -594,7 +594,7 @@
                                 <input id="release-start-date" type="date" value="2026-08-14" readonly class="w-full px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed">
                             </label>
                             <label class="block sm:col-span-2 xl:col-span-2">
-                                <span class="block text-xs font-bold text-slate-600 mb-1.5">Word 檔案（可同時選 B1、B2）</span>
+                                <span class="block text-xs font-bold text-slate-600 mb-1.5">Word 檔案（支援 B1～B6，可同時選多冊）</span>
                                 <input id="vocab-word-files" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="block w-full text-xs text-slate-500 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-50 file:px-4 file:py-2.5 file:font-bold file:text-indigo-700 hover:file:bg-indigo-100">
                             </label>
                         </div>
@@ -2558,14 +2558,22 @@
         }
 
         function getReleasePairConfigs(settings) {
-            return [
-                { book: "B1", lessons: ["L1", "L2"], examIndex: 0 },
-                { book: "B1", lessons: ["L3", "L4"], examIndex: 1 },
-                { book: "B1", lessons: ["L5", "L6"], examIndex: 2 },
-                { book: "B2", lessons: ["L1", "L2"], examIndex: 3 },
-                { book: "B2", lessons: ["L3", "L4"], examIndex: 4 },
-                { book: "B2", lessons: ["L5", "L6"], examIndex: 5 }
-            ].map(pair => ({
+            const lessonPairs = [
+                ["L1", "L2"],
+                ["L3", "L4"],
+                ["L5", "L6"]
+            ];
+            const pairs = Array.from({ length: 6 }, (_, index) => `B${index + 1}`)
+                .flatMap((book, bookIndex) => {
+                    const examOffset = bookIndex % 2 === 0 ? 0 : 3;
+                    return lessonPairs.map((lessons, pairIndex) => ({
+                        book,
+                        lessons,
+                        examIndex: examOffset + pairIndex
+                    }));
+                });
+
+            return pairs.map(pair => ({
                 ...pair,
                 deadline: formatIsoDate(previousWeekdayOnOrBefore(
                     addCalendarDays(parseIsoDate(settings.exams[pair.examIndex].start), -7)
@@ -2665,6 +2673,25 @@
                 .filter(Boolean);
         }
 
+        function detectVocabularyBook(value) {
+            const text = String(value || "");
+            const chineseNumbers = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6 };
+            const toNumber = token => Number(token) || chineseNumbers[token] || 0;
+            const directBookMatch = text.match(/B\s*([1-6])(?!\d)/i);
+            if (directBookMatch) return `B${directBookMatch[1]}`;
+
+            const volumeMatch = text.match(/英語\s*[（(]\s*([一二三四五六1-6])\s*[）)]/);
+            if (volumeMatch) return `B${toNumber(volumeMatch[1])}`;
+
+            const gradeSemesterMatch = text.match(/(?:英語)?\s*([一二三1-3])\s*([上下])/);
+            if (gradeSemesterMatch) {
+                const grade = toNumber(gradeSemesterMatch[1]);
+                const semesterOffset = gradeSemesterMatch[2] === "下" ? 2 : 1;
+                return `B${(grade - 1) * 2 + semesterOffset}`;
+            }
+            return null;
+        }
+
         function parseWordTablePair(chineseCell, englishCell, book, lesson) {
             const chineseLines = getCellParagraphTexts(chineseCell)
                 .filter(line => !/^(Dialogue|Reading|Word Power)$/i.test(line));
@@ -2709,7 +2736,7 @@
             if (xml.querySelector("parsererror")) throw new Error(`${file.name} 的 Word 內容無法解析。`);
 
             const body = xml.getElementsByTagNameNS("*", "body")[0];
-            const fallbackBook = /1\s*下|B2/i.test(file.name) ? "B2" : "B1";
+            const fallbackBook = detectVocabularyBook(file.name) || "B1";
             let currentBook = fallbackBook;
             let currentLesson = null;
             const rows = [];
@@ -2719,9 +2746,9 @@
                 const localName = node.localName;
                 if (localName === "p") {
                     const title = getXmlElementText(node);
-                    const bookMatch = title.match(/英語\s*[（(]\s*([一二])\s*[）)]/);
+                    const detectedBook = detectVocabularyBook(title);
                     const lessonMatch = title.match(/L\s*([1-6])/i);
-                    if (bookMatch) currentBook = bookMatch[1] === "二" ? "B2" : "B1";
+                    if (detectedBook) currentBook = detectedBook;
                     if (lessonMatch) currentLesson = `L${lessonMatch[1]}`;
                     return;
                 }
@@ -2748,11 +2775,13 @@
             const warning = document.getElementById("word-import-warning");
             if (!container || !tbody || !summary || !warning) return;
 
-            const b1Count = pendingWordImportRows.filter(row => row.book === "B1").length;
-            const b2Count = pendingWordImportRows.filter(row => row.book === "B2").length;
+            const bookCounts = Array.from({ length: 6 }, (_, index) => `B${index + 1}`)
+                .map(book => ({ book, count: pendingWordImportRows.filter(row => row.book === book).length }))
+                .filter(entry => entry.count > 0);
             const existingKeys = new Set(vocabulary.map(getVocabKey));
             const existingCount = pendingWordImportRows.filter(row => existingKeys.has(getVocabKey(row))).length;
-            summary.textContent = `已讀取 ${pendingWordImportRows.length} 個不重複義項：B1 ${b1Count} 個、B2 ${b2Count} 個；其中 ${existingCount} 個將保留原例句並更新課次排程。`;
+            const countSummary = bookCounts.map(entry => `${entry.book} ${entry.count} 個`).join("、");
+            summary.textContent = `已讀取 ${pendingWordImportRows.length} 個不重複義項：${countSummary}；其中 ${existingCount} 個將保留原例句並更新課次排程。`;
             warning.textContent = pendingWordImportWarnings.length
                 ? pendingWordImportWarnings.join("；")
                 : "排程檢查通過，各段考範圍均能在考試前開放完畢。";
@@ -2775,7 +2804,7 @@
         async function previewVocabularyWordFiles() {
             const files = Array.from(document.getElementById("vocab-word-files")?.files || []);
             if (files.length === 0) {
-                showToast("請先選擇 B1 或 B2 的 Word DOCX 檔案。", "info");
+                showToast("請先選擇 B1～B6 的 Word DOCX 檔案。", "info");
                 return;
             }
 
@@ -2870,7 +2899,7 @@
         async function saveReleaseSettingsAndReschedule() {
             try {
                 const nextSettings = readReleaseSettingsForm();
-                const schedulable = vocabulary.filter(item => ["B1", "B2"].includes(item.book) && item.sourceOrder !== null);
+                const schedulable = vocabulary.filter(item => /^B[1-6]$/.test(item.book) && item.sourceOrder !== null);
                 if (schedulable.length > 0) {
                     const scheduled = buildReleaseSchedule(schedulable, nextSettings);
                     nextSettings.releaseStartDate = scheduled.firstReleaseDate;
