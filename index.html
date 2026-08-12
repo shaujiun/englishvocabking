@@ -508,17 +508,45 @@
             <!-- ==================== VOCAB LIST SECTION ==================== -->
             <section id="tab-vocab-list" class="tab-content hidden">
                 <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-sm">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-5">
                         <div>
                             <h2 class="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
                                 <i class="fa-solid fa-book text-sky-500"></i> 當前挑戰單字庫
                             </h2>
-                            <p class="text-slate-400 text-xs mt-1">目前共有 <span id="total-words-badge" class="font-bold text-sky-600">0</span> 個單字，包含系統預設與管理者每日新增字卡。</p>
+                            <p class="text-slate-400 text-xs mt-1">目前篩選結果共有 <span id="total-words-badge" class="font-bold text-sky-600">0</span> 個單字。</p>
                         </div>
                         <div class="w-full md:w-auto relative">
                             <input type="text" id="vocab-search" oninput="searchVocabulary()" placeholder="搜尋英文單字或中文..." class="w-full md:w-80 pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white transition-all">
                             <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
                         </div>
+                    </div>
+
+                    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-7 rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+                        <div class="grid grid-cols-2 gap-3 w-full sm:w-auto">
+                            <label class="block">
+                                <span class="block text-xs font-bold text-slate-500 mb-1.5">冊別</span>
+                                <select id="vocab-list-book-filter" onchange="renderVocabList()" class="w-full sm:w-44 px-3 py-2.5 bg-white border border-sky-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
+                                    <option value="B1">B1（第一冊）</option>
+                                    <option value="B2">B2（第二冊）</option>
+                                    <option value="B3">B3（第三冊）</option>
+                                    <option value="B4">B4（第四冊）</option>
+                                    <option value="B5">B5（第五冊）</option>
+                                    <option value="B6">B6（第六冊）</option>
+                                </select>
+                            </label>
+                            <label class="block">
+                                <span class="block text-xs font-bold text-slate-500 mb-1.5">課別</span>
+                                <select id="vocab-list-lesson-filter" onchange="renderVocabList()" class="w-full sm:w-44 px-3 py-2.5 bg-white border border-sky-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400">
+                                    <option value="L1">L1（第一課）</option>
+                                    <option value="L2">L2（第二課）</option>
+                                    <option value="L3">L3（第三課）</option>
+                                    <option value="L4">L4（第四課）</option>
+                                    <option value="L5">L5（第五課）</option>
+                                    <option value="L6">L6（第六課）</option>
+                                </select>
+                            </label>
+                        </div>
+                        <p id="vocab-list-filter-summary" class="text-xs font-bold text-sky-800 leading-relaxed">目前顯示 B1 第 1 課</p>
                     </div>
 
                     <!-- 單字表格與字卡切換 -->
@@ -2293,10 +2321,36 @@
         // ==================== VOCAB LIST TAB ====================
         function renderVocabList() {
             const grid = document.getElementById('vocab-grid');
-            document.getElementById('total-words-badge').textContent = vocabulary.length;
+            const selectedBook = document.getElementById('vocab-list-book-filter')?.value || "B1";
+            const selectedLesson = document.getElementById('vocab-list-lesson-filter')?.value || "L1";
+            const query = document.getElementById('vocab-search')?.value.toLowerCase().trim() || "";
+            const filteredVocabulary = vocabulary
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => (
+                    (item.book || "B1") === selectedBook
+                    && (item.lesson || "L1") === selectedLesson
+                    && (!query || item.word.toLowerCase().includes(query) || item.translation.includes(query))
+                ));
+            document.getElementById('total-words-badge').textContent = filteredVocabulary.length;
+            const summary = document.getElementById('vocab-list-filter-summary');
+            if (summary) {
+                const lessonNumber = selectedLesson.replace(/^L/, "");
+                summary.textContent = `目前顯示 ${selectedBook} 第 ${lessonNumber} 課，共 ${filteredVocabulary.length} 個單字`;
+            }
             grid.innerHTML = '';
 
-            vocabulary.forEach((item, index) => {
+            if (filteredVocabulary.length === 0) {
+                grid.innerHTML = `
+                    <div class="sm:col-span-2 lg:col-span-3 rounded-3xl border border-dashed border-sky-200 bg-sky-50/40 px-6 py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-book-open text-3xl text-sky-200 mb-3"></i>
+                        <p class="font-bold text-slate-500">這個冊別與課別目前沒有符合的單字</p>
+                        <p class="text-xs mt-1">可更換冊別、課別，或清除搜尋文字後再查看。</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredVocabulary.forEach(({ item, index }) => {
                 const itemKey = getVocabKey(item);
                 const isMastered = masteredWords.has(itemKey) || masteredWords.has(item.word);
                 const card = document.createElement('div');
@@ -2373,17 +2427,7 @@
         }
 
         function searchVocabulary() {
-            const query = document.getElementById('vocab-search').value.toLowerCase().trim();
-            const cards = document.getElementById('vocab-grid').children;
-            
-            vocabulary.forEach((item, index) => {
-                const matches = item.word.toLowerCase().includes(query) || item.translation.includes(query);
-                if (matches) {
-                    cards[index].classList.remove('hidden');
-                } else {
-                    cards[index].classList.add('hidden');
-                }
-            });
+            renderVocabList();
         }
 
 
@@ -2543,7 +2587,10 @@
                         .filter(row => row.book === pair.book && row.lesson === lesson)
                         .sort((a, b) => (a.sourceOrder || 0) - (b.sourceOrder || 0));
                     return { lesson, lessonRows };
-                });
+                }).filter(plan => plan.lessonRows.length > 0);
+
+                // 允許只匯入單一冊別或部分課次；沒有單字的範圍不應進入排程。
+                if (lessonPlans.length === 0) return;
 
                 const minimumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.ceil(plan.lessonRows.length / 3), 0);
                 const maximumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.floor(plan.lessonRows.length / 2), 0);
