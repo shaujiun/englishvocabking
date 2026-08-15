@@ -1,8 +1,8 @@
 (() => {
     "use strict";
 
-    const GRAMMAR_BOOK = "B3";
-    const GRAMMAR_LESSON = "L1";
+    const DEFAULT_GRAMMAR_BOOK = "B3";
+    const DEFAULT_GRAMMAR_LESSON = "L1";
     const PASS_SCORE = 80;
 
     const STAGES = [
@@ -619,6 +619,34 @@
         ]
     };
 
+    const GRAMMAR_BOOKS = {
+        B3: {
+            code: "B3",
+            label: "第 3 冊（八年級上）",
+            shortLabel: "B3",
+            defaultLesson: "L1",
+            lessons: {
+                L1: {
+                    code: "L1",
+                    label: "第 1 課",
+                    kicker: "B3・LESSON 1",
+                    title: "過去式文法冒險",
+                    description: "練習文法辨識、錯誤修正、句型變化與生活對話。每回合 10 題，先思考、再修正，最後讀懂解析。",
+                    stageDescriptions: Object.fromEntries(STAGES.map((stage) => [stage.id, stage.description])),
+                    summarySteps: ["先找時間詞", "判斷 be 動詞或一般動詞", "確認肯定、否定或問句", "最後檢查動詞形式"],
+                    questionBank: QUESTION_BANK
+                },
+                ...(window.B3_L2_GRAMMAR ? { L2: window.B3_L2_GRAMMAR } : {}),
+                ...(window.B3_L3_GRAMMAR ? { L3: window.B3_L3_GRAMMAR } : {}),
+                ...(window.B3_L4_GRAMMAR ? { L4: window.B3_L4_GRAMMAR } : {}),
+                ...(window.B3_L5_GRAMMAR ? { L5: window.B3_L5_GRAMMAR } : {}),
+                ...(window.B3_L6_GRAMMAR ? { L6: window.B3_L6_GRAMMAR } : {})
+            }
+        }
+    };
+
+    let activeGrammarBook = DEFAULT_GRAMMAR_BOOK;
+    let activeGrammarLesson = DEFAULT_GRAMMAR_LESSON;
     let grammarProgress = {};
     let grammarPreviewGroup = null;
     let grammarSession = null;
@@ -644,8 +672,15 @@
     };
 
     const getProgressStorageKey = () => `grammar-progress:${currentUser?.id || currentUser?.username || "guest"}`;
+    const getBookSelectionStorageKey = () => `grammar-book:${currentUser?.id || currentUser?.username || "guest"}`;
+    const getLegacyLessonSelectionStorageKey = () => `grammar-lesson:${currentUser?.id || currentUser?.username || "guest"}`;
+    const getLessonSelectionStorageKey = (bookCode = activeGrammarBook) => `${getLegacyLessonSelectionStorageKey()}:${bookCode}`;
+    const getActiveBook = () => GRAMMAR_BOOKS[activeGrammarBook] || GRAMMAR_BOOKS[DEFAULT_GRAMMAR_BOOK];
+    const getActiveLessons = () => getActiveBook().lessons;
+    const getProgressKey = (stageId, bookCode = activeGrammarBook, lessonCode = activeGrammarLesson) => `${bookCode}:${lessonCode}:${stageId}`;
+    const getActiveLesson = () => getActiveLessons()[activeGrammarLesson] || getActiveLessons()[getActiveBook().defaultLesson];
 
-    const getStageProgress = (stageId) => grammarProgress[stageId] || {
+    const getStageProgress = (stageId, bookCode = activeGrammarBook, lessonCode = activeGrammarLesson) => grammarProgress[getProgressKey(stageId, bookCode, lessonCode)] || {
         bestScore: 0,
         attempts: 0,
         passed: false
@@ -668,19 +703,35 @@
         grammarProgress = {};
         try {
             const saved = JSON.parse(localStorage.getItem(getProgressStorageKey()) || "{}");
-            if (saved && typeof saved === "object") grammarProgress = saved;
+            if (saved && typeof saved === "object") {
+                Object.entries(saved).forEach(([key, value]) => {
+                    const parts = key.split(":");
+                    const migratedKey = parts.length === 1
+                        ? getProgressKey(parts[0], DEFAULT_GRAMMAR_BOOK, DEFAULT_GRAMMAR_LESSON)
+                        : parts.length === 2
+                            ? getProgressKey(parts[1], DEFAULT_GRAMMAR_BOOK, parts[0])
+                            : key;
+                    grammarProgress[migratedKey] = value;
+                });
+            }
+            const selectedBook = String(localStorage.getItem(getBookSelectionStorageKey()) || DEFAULT_GRAMMAR_BOOK).toUpperCase();
+            if (GRAMMAR_BOOKS[selectedBook]) activeGrammarBook = selectedBook;
+            const book = getActiveBook();
+            const selectedLesson = localStorage.getItem(getLessonSelectionStorageKey(activeGrammarBook))
+                || (activeGrammarBook === DEFAULT_GRAMMAR_BOOK ? localStorage.getItem(getLegacyLessonSelectionStorageKey()) : null);
+            if (selectedLesson && book.lessons[selectedLesson]) activeGrammarLesson = selectedLesson;
+            else activeGrammarLesson = book.defaultLesson;
         } catch (error) {
             console.warn("Unable to read local grammar progress.", error);
         }
+        saveLocalGrammarProgress();
 
         if (!currentUser || currentUser.role !== "student" || !db) return;
 
         const { data, error } = await db
             .from("grammar_progress")
-            .select("game_code,best_score,attempt_count,passed")
-            .eq("user_id", currentUser.id)
-            .eq("book", GRAMMAR_BOOK)
-            .eq("lesson", GRAMMAR_LESSON);
+            .select("book,lesson,game_code,best_score,attempt_count,passed")
+            .eq("user_id", currentUser.id);
 
         if (error) {
             console.warn("Grammar progress table is not available yet; using this device only.", error);
@@ -688,8 +739,11 @@
         }
 
         (data || []).forEach((row) => {
-            const local = getStageProgress(row.game_code);
-            grammarProgress[row.game_code] = {
+            const bookCode = String(row.book || DEFAULT_GRAMMAR_BOOK).toUpperCase();
+            const lessonCode = String(row.lesson || DEFAULT_GRAMMAR_LESSON).toUpperCase();
+            if (!GRAMMAR_BOOKS[bookCode]?.lessons?.[lessonCode]) return;
+            const local = getStageProgress(row.game_code, bookCode, lessonCode);
+            grammarProgress[getProgressKey(row.game_code, bookCode, lessonCode)] = {
                 bestScore: Math.max(local.bestScore || 0, Number(row.best_score) || 0),
                 attempts: Math.max(local.attempts || 0, Number(row.attempt_count) || 0),
                 passed: Boolean(local.passed || row.passed)
@@ -698,22 +752,22 @@
         saveLocalGrammarProgress();
     }
 
-    async function saveGrammarStageProgress(stageId, score) {
-        const previous = getStageProgress(stageId);
+    async function saveGrammarStageProgress(stageId, score, bookCode = activeGrammarBook, lessonCode = activeGrammarLesson) {
+        const previous = getStageProgress(stageId, bookCode, lessonCode);
         const next = {
             bestScore: Math.max(previous.bestScore || 0, score),
             attempts: (previous.attempts || 0) + 1,
             passed: Boolean(previous.passed || score >= PASS_SCORE)
         };
-        grammarProgress[stageId] = next;
+        grammarProgress[getProgressKey(stageId, bookCode, lessonCode)] = next;
         saveLocalGrammarProgress();
 
         if (!currentUser || currentUser.role !== "student" || !db) return next;
 
         const { error } = await db.from("grammar_progress").upsert({
             user_id: currentUser.id,
-            book: GRAMMAR_BOOK,
-            lesson: GRAMMAR_LESSON,
+            book: bookCode,
+            lesson: lessonCode,
             game_code: stageId,
             best_score: next.bestScore,
             attempt_count: next.attempts,
@@ -738,15 +792,73 @@
         if (adminSelect && currentUser?.role === "admin") adminSelect.value = group;
     }
 
+    function updateGrammarBookDisplay() {
+        const book = getActiveBook();
+        const select = document.getElementById("grammar-book-select");
+        const lessonSelect = document.getElementById("grammar-lesson-select");
+        if (select) select.value = activeGrammarBook;
+        if (lessonSelect) {
+            lessonSelect.innerHTML = Object.values(book.lessons)
+                .map(lesson => `<option value="${lesson.code}">${lesson.label}</option>`)
+                .join("");
+        }
+    }
+
+    function updateGrammarLessonDisplay() {
+        const book = getActiveBook();
+        const lesson = getActiveLesson();
+        const select = document.getElementById("grammar-lesson-select");
+        const badge = document.getElementById("grammar-lesson-badge");
+        const title = document.getElementById("grammar-map-title");
+        const description = document.getElementById("grammar-map-description");
+        const kicker = document.getElementById("grammar-game-kicker");
+
+        if (select) select.value = activeGrammarLesson;
+        if (badge) badge.innerHTML = `<i class="fa-solid fa-book-open" aria-hidden="true"></i> ${book.shortLabel} ${lesson.label}`;
+        if (title) title.textContent = lesson.title;
+        if (description) description.textContent = lesson.description;
+        if (kicker) kicker.textContent = lesson.kicker;
+    }
+
+    function setGrammarBook(bookCode) {
+        const normalized = String(bookCode || "").toUpperCase();
+        if (!GRAMMAR_BOOKS[normalized]) return;
+        activeGrammarBook = normalized;
+        const book = getActiveBook();
+        const savedLesson = localStorage.getItem(getLessonSelectionStorageKey(activeGrammarBook));
+        activeGrammarLesson = savedLesson && book.lessons[savedLesson] ? savedLesson : book.defaultLesson;
+        try {
+            localStorage.setItem(getBookSelectionStorageKey(), activeGrammarBook);
+        } catch (error) {
+            console.warn("Unable to save selected grammar book.", error);
+        }
+        renderGrammarMap();
+    }
+
+    function setGrammarLesson(lessonCode) {
+        const normalized = String(lessonCode || "").toUpperCase();
+        if (!getActiveLessons()[normalized]) return;
+        activeGrammarLesson = normalized;
+        try {
+            localStorage.setItem(getLessonSelectionStorageKey(), activeGrammarLesson);
+        } catch (error) {
+            console.warn("Unable to save selected grammar lesson.", error);
+        }
+        renderGrammarMap();
+    }
+
     function renderGrammarMap() {
         updateGrammarGroupDisplay();
+        updateGrammarBookDisplay();
+        updateGrammarLessonDisplay();
         const grid = document.getElementById("grammar-stage-grid");
         const status = document.getElementById("grammar-map-status");
         if (!grid || !status) return;
 
+        const lesson = getActiveLesson();
         const passedCount = STAGES.filter(stage => getStageProgress(stage.id).passed).length;
         status.innerHTML = passedCount === STAGES.length
-            ? '<i class="fa-solid fa-trophy mr-2 text-amber-500" aria-hidden="true"></i>第 1 課的四個文法關卡都已通過，可以自由重複練習。'
+            ? `<i class="fa-solid fa-trophy mr-2 text-amber-500" aria-hidden="true"></i>${lesson.label}的四個文法關卡都已通過，可以自由重複練習。`
             : `<i class="fa-solid fa-route mr-2 text-violet-500" aria-hidden="true"></i>已通過 ${passedCount}／${STAGES.length} 關；每關以首次作答計算，達 ${PASS_SCORE}% 即可解鎖下一關。`;
 
         grid.innerHTML = STAGES.map((stage, index) => {
@@ -773,7 +885,7 @@
                             <p class="mt-1 text-xs font-black text-slate-500">${stage.subtitle}</p>
                         </div>
                     </div>
-                    <p class="mt-4 min-h-10 text-sm font-medium leading-relaxed text-slate-500">${stage.description}</p>
+                    <p class="mt-4 min-h-10 text-sm font-medium leading-relaxed text-slate-500">${lesson.stageDescriptions?.[stage.id] || stage.description}</p>
                     <div class="mt-4 flex items-center justify-between gap-3">
                         <span class="rounded-full border px-3 py-1 text-[11px] font-black ${theme.badge}">${stateLabel}</span>
                         <button type="button" ${unlocked ? `onclick="startGrammarStage('${stage.id}')"` : "disabled"} class="rounded-xl px-4 py-2 text-sm font-black text-white transition ${unlocked ? theme.button : "cursor-not-allowed bg-slate-300"}">${buttonLabel}</button>
@@ -803,11 +915,14 @@
         }
 
         const stage = STAGES[stageIndex];
+        const lesson = getActiveLesson();
         const group = getGrammarGroup();
         grammarSession = {
             stage,
+            bookCode: activeGrammarBook,
+            lessonCode: activeGrammarLesson,
             group,
-            questions: shuffle(QUESTION_BANK[stageId]).slice(0, 10),
+            questions: shuffle(lesson.questionBank[stageId]).slice(0, 10),
             currentIndex: 0,
             firstTryCorrect: 0,
             attemptsOnQuestion: 0,
@@ -817,6 +932,7 @@
         };
 
         document.getElementById("grammar-game-title").textContent = stage.title;
+        document.getElementById("grammar-game-kicker").textContent = lesson.kicker;
         document.getElementById("grammar-question-group").textContent = `英語 ${group} 組`;
         switchTab("game-grammar");
         renderGrammarQuestion();
@@ -937,7 +1053,8 @@
 
         grammarSession.attemptsOnQuestion += 1;
         grammarSession.lastResponse = response;
-        const isCorrect = normalizeSentence(response) === normalizeSentence(question.answer);
+        const correctAnswer = asGroupValue(question.answer, grammarSession.group);
+        const isCorrect = normalizeSentence(response) === normalizeSentence(correctAnswer);
 
         if (isCorrect) {
             if (grammarSession.attemptsOnQuestion === 1) grammarSession.firstTryCorrect += 1;
@@ -991,10 +1108,11 @@
         document.getElementById("grammar-first-try-score").textContent = grammarSession.firstTryCorrect;
         document.getElementById("grammar-clue-text").textContent = question.clue;
         document.getElementById("grammar-rule-text").textContent = question.rule;
+        const correctAnswer = asGroupValue(question.answer, grammarSession.group);
         document.getElementById("grammar-answer-compare").innerHTML = `
             <span class="block text-xs font-black text-slate-400">答案比較</span>
             ${grammarSession.lastResponse ? `<span class="mt-1 block"><strong>你的答案：</strong>${grammarSession.lastResponse}</span>` : ""}
-            <span class="mt-1 block text-emerald-700"><strong>正確答案：</strong>${question.answer}</span>
+            <span class="mt-1 block text-emerald-700"><strong>正確答案：</strong>${correctAnswer}</span>
         `;
         document.getElementById("grammar-thinking-steps").innerHTML = question.steps.map((step, index) => `
             <li class="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2">
@@ -1027,7 +1145,7 @@
         const total = grammarSession.questions.length;
         const score = Math.round((grammarSession.firstTryCorrect / total) * 100);
         const passed = score >= PASS_SCORE;
-        await saveGrammarStageProgress(grammarSession.stage.id, score);
+        await saveGrammarStageProgress(grammarSession.stage.id, score, grammarSession.bookCode, grammarSession.lessonCode);
 
         document.getElementById("grammar-question-progress").textContent = `${total}／${total}`;
         document.getElementById("grammar-progress-bar").style.width = "100%";
@@ -1054,12 +1172,9 @@
         document.getElementById("grammar-answer-compare").innerHTML = passed
             ? '<strong class="text-emerald-700">完成：</strong>進度已保存，可回到地圖選擇下一關。'
             : '<strong class="text-amber-800">建議：</strong>先回想時間線索、句型種類與動詞形式，再重做本關。';
-        document.getElementById("grammar-thinking-steps").innerHTML = [
-            "先找時間詞",
-            "判斷 be 動詞或一般動詞",
-            "確認肯定、否定或問句",
-            "最後檢查動詞形式"
-        ].map((step, index) => `<li class="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs text-violet-700">${index + 1}</span><span>${step}</span></li>`).join("");
+        const sessionBook = GRAMMAR_BOOKS[grammarSession.bookCode] || GRAMMAR_BOOKS[DEFAULT_GRAMMAR_BOOK];
+        const summarySteps = sessionBook.lessons[grammarSession.lessonCode]?.summarySteps || sessionBook.lessons[sessionBook.defaultLesson].summarySteps;
+        document.getElementById("grammar-thinking-steps").innerHTML = summarySteps.map((step, index) => `<li class="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs text-violet-700">${index + 1}</span><span>${step}</span></li>`).join("");
         const nextButton = document.querySelector("#grammar-explanation-box button");
         if (nextButton) nextButton.innerHTML = '返回闖關地圖 <i class="fa-solid fa-map ml-1" aria-hidden="true"></i>';
         document.getElementById("grammar-explanation-box").classList.remove("hidden");
@@ -1077,6 +1192,8 @@
     window.renderGrammarMap = renderGrammarMap;
     window.openGrammarMap = openGrammarMap;
     window.setGrammarPreviewGroup = setGrammarPreviewGroup;
+    window.setGrammarBook = setGrammarBook;
+    window.setGrammarLesson = setGrammarLesson;
     window.startGrammarStage = startGrammarStage;
     window.clearGrammarReorder = clearGrammarReorder;
     window.submitGrammarReorder = submitGrammarReorder;
