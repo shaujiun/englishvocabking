@@ -340,7 +340,7 @@
                         <i class="fa-solid fa-book"></i> 單字庫
                     </button>
                     <button onclick="openGrammarMap()" class="nav-btn px-4 py-2 rounded-xl text-sm font-medium text-violet-700 hover:bg-violet-50 transition-all flex items-center gap-2" id="nav-grammar-map">
-                        <i class="fa-solid fa-shapes"></i> B3 文法冒險
+                        <i class="fa-solid fa-shapes"></i> 文法冒險
                     </button>
                     <!-- 僅管理者可見 -->
                     <button onclick="switchTab('admin-panel')" class="nav-btn hidden px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all flex items-center gap-2" id="nav-admin-panel">
@@ -463,9 +463,9 @@
                                 <i class="fa-solid fa-shapes" aria-hidden="true"></i>
                             </span>
                             <span>
-                                <span class="mb-1 block text-xs font-black tracking-widest text-violet-100">B3・LESSON 1</span>
+                                <span class="mb-1 block text-xs font-black tracking-widest text-violet-100">B3 全冊・LESSON 1－6</span>
                                 <span class="block text-2xl font-black">文法冒險地圖</span>
-                                <span class="mt-1 block text-sm font-medium text-white/85">從辨識、修正到情境應用；每關首次答對率達 80% 即可前進。</span>
+                                <span class="mt-1 block text-sm font-medium text-white/85">選擇課別，從辨識、修正到情境應用；每關首次答對率達 80% 即可前進。</span>
                             </span>
                         </span>
                         <span class="inline-flex items-center gap-2 self-start rounded-full bg-white px-5 py-2.5 text-sm font-black text-indigo-700 shadow-sm md:self-auto">
@@ -532,14 +532,28 @@
                     <div class="bg-gradient-to-r from-violet-600 via-indigo-600 to-sky-500 px-6 py-7 text-white md:px-8">
                         <div class="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
                             <div>
-                                <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-black tracking-wider">
+                                <span id="grammar-lesson-badge" class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-black tracking-wider">
                                     <i class="fa-solid fa-book-open" aria-hidden="true"></i> B3 第 1 課
                                 </span>
-                                <h2 class="mt-3 text-2xl font-black md:text-3xl">過去式文法冒險</h2>
-                                <p class="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-white/85">依序練習文法辨識、錯誤修正、句型變化與生活對話。每回合 10 題，先思考、再修正，最後讀懂解析。</p>
+                                <h2 id="grammar-map-title" class="mt-3 text-2xl font-black md:text-3xl">過去式文法冒險</h2>
+                                <p id="grammar-map-description" class="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-white/85">依序練習文法辨識、錯誤修正、句型變化與生活對話。每回合 10 題，先思考、再修正，最後讀懂解析。</p>
                             </div>
-                            <div class="rounded-2xl border border-white/20 bg-white/10 px-5 py-4 backdrop-blur-sm">
-                                <span class="block text-xs font-bold text-white/70">目前練習版本</span>
+                            <div class="w-full rounded-2xl border border-white/20 bg-white/10 px-5 py-4 backdrop-blur-sm md:w-60">
+                                <label for="grammar-book-select" class="block text-xs font-bold text-white/70">選擇冊別</label>
+                                <select id="grammar-book-select" onchange="setGrammarBook(this.value)" class="mt-1 w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm font-black text-indigo-700">
+                                    <option value="B3">第 3 冊（八年級上）</option>
+                                </select>
+                                <label for="grammar-lesson-select" class="mt-3 block text-xs font-bold text-white/70">選擇課別</label>
+                                <select id="grammar-lesson-select" onchange="setGrammarLesson(this.value)" class="mt-1 w-full rounded-lg border border-white/30 bg-white px-3 py-2 text-sm font-black text-indigo-700">
+                                    <option value="L1">第 1 課</option>
+                                    <option value="L2">第 2 課</option>
+                                    <option value="L3">第 3 課</option>
+                                    <option value="L4">第 4 課</option>
+                                    <option value="L5">第 5 課</option>
+                                    <option value="L6">第 6 課</option>
+                                </select>
+                                <span class="mt-2 block text-[11px] font-medium text-white/70">其他冊別將依教材逐步加入。</span>
+                                <span class="mt-3 block text-xs font-bold text-white/70">目前練習版本</span>
                                 <strong id="grammar-group-badge" class="mt-1 block text-xl font-black">英語 B 組</strong>
                                 <label id="grammar-admin-group-wrap" class="mt-3 hidden text-xs font-bold text-white/80">
                                     管理者預覽
@@ -5037,6 +5051,11 @@
             window.speechSynthesis?.getVoices();
         }
     </script>
+    <script src="grammar-b3-l2.js"></script>
+    <script src="grammar-b3-l3.js"></script>
+    <script src="grammar-b3-l4.js"></script>
+    <script src="grammar-b3-l5.js"></script>
+    <script src="grammar-b3-l6.js"></script>
     <script src="grammar-games.js"></script>
 </body>
 </html>
