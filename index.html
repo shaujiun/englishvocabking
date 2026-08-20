@@ -1351,6 +1351,8 @@
         let pendingGameType = null;
         let activeGameScope = { book: "B1", type: "L1", label: "第一冊第一課" };
         const FOCUS_ACTIVITY_CODES = new Set(["listening", "spelling", "sentence", "matching", "pronunciation"]);
+        const FOCUS_TASK_LAUNCH_STORAGE_KEY = "sljh.focusTaskLaunch.v1";
+        const FOCUS_TASK_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const DEFAULT_GROUP_SETTINGS = {
             A: { questionCount: 20, targetScore: 80 },
             B: { questionCount: 10, targetScore: 80 }
@@ -1607,13 +1609,43 @@
             populateReleaseSettingsForm();
         }
 
+        function getRememberedEnglishFocusTask() {
+            try {
+                const saved = JSON.parse(sessionStorage.getItem(FOCUS_TASK_LAUNCH_STORAGE_KEY) || "null");
+                if (!saved
+                    || !FOCUS_TASK_UUID_PATTERN.test(String(saved.taskId || ""))
+                    || Number(saved.expiresAt) <= Date.now()) {
+                    sessionStorage.removeItem(FOCUS_TASK_LAUNCH_STORAGE_KEY);
+                    return null;
+                }
+                if (String(saved.subjectCode || "").toLowerCase() !== "english") return null;
+                const activity = String(saved.activityCode || "").toLowerCase();
+                if (!FOCUS_ACTIVITY_CODES.has(activity)) return null;
+                return { taskId: saved.taskId, activity };
+            } catch {
+                return null;
+            }
+        }
+
+        function clearRememberedEnglishFocusTask(taskId) {
+            try {
+                const saved = JSON.parse(sessionStorage.getItem(FOCUS_TASK_LAUNCH_STORAGE_KEY) || "null");
+                if (!taskId || saved?.taskId === taskId) {
+                    sessionStorage.removeItem(FOCUS_TASK_LAUNCH_STORAGE_KEY);
+                }
+            } catch {
+                // 瀏覽器若封鎖 sessionStorage，仍不影響遊戲結算。
+            }
+        }
+
         function getRequestedFocusContext() {
             const params = new URLSearchParams(window.location.search);
             const taskId = params.get("focusTask") || "";
             const activity = params.get("focusActivity") || "";
+            const remembered = getRememberedEnglishFocusTask();
             return {
-                taskId: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId) ? taskId : null,
-                activity: FOCUS_ACTIVITY_CODES.has(activity) ? activity : null
+                taskId: FOCUS_TASK_UUID_PATTERN.test(taskId) ? taskId : remembered?.taskId || null,
+                activity: FOCUS_ACTIVITY_CODES.has(activity) ? activity : remembered?.activity || null
             };
         }
 
@@ -4919,6 +4951,7 @@
             }
 
             learningContext.attemptReported = true;
+            if (data?.passed) clearRememberedEnglishFocusTask(learningContext.focusTask.id);
             return data;
         }
 
