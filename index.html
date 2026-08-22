@@ -817,7 +817,7 @@
                                 </div>
 
                                 <div class="flex items-start justify-between gap-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
-                                    <p class="text-[10px] text-amber-700 font-medium leading-relaxed"><i class="fa-solid fa-circle-info"></i> 每句都必須包含目前英文單字；完成多句後，學生測驗會隨機出題並避免連續重複。</p>
+                                    <p class="text-[10px] text-amber-700 font-medium leading-relaxed"><i class="fa-solid fa-circle-info"></i> 每句都必須包含目前英文單字，可使用 studied、studies、studying 等合理變化；完成多句後，學生測驗會隨機出題並避免連續重複。</p>
                                     <span id="form-example-progress" class="shrink-0 text-[10px] font-extrabold text-amber-800 bg-white px-2 py-1 rounded-lg border border-amber-200">0/3</span>
                                 </div>
 
@@ -1785,10 +1785,90 @@
             return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         }
 
+        function getVocabInflectedForms(phrase) {
+            const word = String(phrase || "").trim().toLowerCase();
+            if (!/^[a-z]+(?:['-][a-z]+)*$/.test(word)) return [word];
+
+            const forms = new Set([word]);
+            const irregularForms = {
+                be: ["am", "is", "are", "was", "were", "been", "being"],
+                become: ["becomes", "became", "become", "becoming"],
+                begin: ["begins", "began", "begun", "beginning"],
+                bring: ["brings", "brought", "bringing"],
+                buy: ["buys", "bought", "buying"],
+                catch: ["catches", "caught", "catching"],
+                come: ["comes", "came", "coming"],
+                do: ["does", "did", "done", "doing"],
+                drink: ["drinks", "drank", "drunk", "drinking"],
+                drive: ["drives", "drove", "driven", "driving"],
+                eat: ["eats", "ate", "eaten", "eating"],
+                feel: ["feels", "felt", "feeling"],
+                find: ["finds", "found", "finding"],
+                get: ["gets", "got", "gotten", "getting"],
+                give: ["gives", "gave", "given", "giving"],
+                go: ["goes", "went", "gone", "going"],
+                have: ["has", "had", "having"],
+                hear: ["hears", "heard", "hearing"],
+                keep: ["keeps", "kept", "keeping"],
+                know: ["knows", "knew", "known", "knowing"],
+                leave: ["leaves", "left", "leaving"],
+                make: ["makes", "made", "making"],
+                meet: ["meets", "met", "meeting"],
+                read: ["reads", "read", "reading"],
+                run: ["runs", "ran", "running"],
+                say: ["says", "said", "saying"],
+                see: ["sees", "saw", "seen", "seeing"],
+                sing: ["sings", "sang", "sung", "singing"],
+                sit: ["sits", "sat", "sitting"],
+                speak: ["speaks", "spoke", "spoken", "speaking"],
+                swim: ["swims", "swam", "swum", "swimming"],
+                take: ["takes", "took", "taken", "taking"],
+                teach: ["teaches", "taught", "teaching"],
+                tell: ["tells", "told", "telling"],
+                think: ["thinks", "thought", "thinking"],
+                wear: ["wears", "wore", "worn", "wearing"],
+                win: ["wins", "won", "winning"],
+                write: ["writes", "wrote", "written", "writing"]
+            };
+
+            (irregularForms[word] || []).forEach(form => forms.add(form));
+
+            if (/[^aeiou]y$/.test(word)) {
+                forms.add(`${word.slice(0, -1)}ies`);
+                forms.add(`${word.slice(0, -1)}ied`);
+                forms.add(`${word}ing`);
+            } else {
+                forms.add(/(?:s|x|z|ch|sh|o)$/.test(word) ? `${word}es` : `${word}s`);
+
+                if (/ie$/.test(word)) {
+                    forms.add(`${word.slice(0, -2)}ying`);
+                    forms.add(`${word}d`);
+                } else if (/e$/.test(word) && !/(?:ee|ye|oe)$/.test(word)) {
+                    forms.add(`${word}d`);
+                    forms.add(`${word.slice(0, -1)}ing`);
+                } else {
+                    const doublesFinalConsonant = word.length <= 4
+                        && /^[^aeiou]*[aeiou][^aeiouwxy]$/.test(word);
+                    const stem = doublesFinalConsonant ? `${word}${word.slice(-1)}` : word;
+                    forms.add(`${stem}ed`);
+                    forms.add(`${stem}ing`);
+                }
+            }
+
+            return [...forms].filter(Boolean).sort((left, right) => right.length - left.length);
+        }
+
         function getVocabSentenceRegex(phrase) {
             const normalizedPhrase = String(phrase || "").trim().replace(/\s+/g, " ");
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
             const wildcard = "[a-z0-9'-]+(?:\\s+[a-z0-9'-]+){0,3}";
+
+            if (!hasWildcard && /^[a-z]+(?:['-][a-z]+)*$/i.test(normalizedPhrase)) {
+                const inflectedPattern = getVocabInflectedForms(normalizedPhrase)
+                    .map(form => escapeRegExp(form))
+                    .join("|");
+                return new RegExp(`(^|[^a-z0-9])(${inflectedPattern})(?=$|[^a-z0-9])`, "i");
+            }
 
             const pattern = normalizedPhrase
                 .split(/(?:\.{3}|…)/)
@@ -3449,7 +3529,7 @@
                     return;
                 }
                 if (example.sentence && !sentenceContainsVocabPhrase(example.sentence, word)) {
-                    showToast(`例句 ${slotNumber} 中找不到對應的單字 "${word}"，請再次確認拼寫！`, 'error');
+                    showToast(`例句 ${slotNumber} 中找不到單字 "${word}" 或其合理變化，請再次確認拼寫！`, 'error');
                     return;
                 }
             }
