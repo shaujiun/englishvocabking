@@ -620,6 +620,7 @@
     };
 
     const GRAMMAR_BOOKS = {
+        ...(window.B1_GRAMMAR ? { B1: window.B1_GRAMMAR } : {}),
         B3: {
             code: "B3",
             label: "第 3 冊（八年級上）",
@@ -796,7 +797,12 @@
         const book = getActiveBook();
         const select = document.getElementById("grammar-book-select");
         const lessonSelect = document.getElementById("grammar-lesson-select");
-        if (select) select.value = activeGrammarBook;
+        if (select) {
+            select.innerHTML = Object.values(GRAMMAR_BOOKS)
+                .map(grammarBook => `<option value="${grammarBook.code}">${grammarBook.label}</option>`)
+                .join("");
+            select.value = activeGrammarBook;
+        }
         if (lessonSelect) {
             lessonSelect.innerHTML = Object.values(book.lessons)
                 .map(lesson => `<option value="${lesson.code}">${lesson.label}</option>`)
