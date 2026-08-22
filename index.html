@@ -817,7 +817,7 @@
                                 </div>
 
                                 <div class="flex items-start justify-between gap-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
-                                    <p class="text-[10px] text-amber-700 font-medium leading-relaxed"><i class="fa-solid fa-circle-info"></i> 每句都必須包含目前英文單字，可使用 studied、studies、studying 等合理變化；完成多句後，學生測驗會隨機出題並避免連續重複。</p>
+                                    <p class="text-[10px] text-amber-700 font-medium leading-relaxed"><i class="fa-solid fa-circle-info"></i> 每句都必須包含目前英文單字，可使用 studied、studies、studying 或 passed away 等合理變化；完成多句後，學生測驗會隨機出題並避免連續重複。</p>
                                     <span id="form-example-progress" class="shrink-0 text-[10px] font-extrabold text-amber-800 bg-white px-2 py-1 rounded-lg border border-amber-200">0/3</span>
                                 </div>
 
@@ -1863,10 +1863,22 @@
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
             const wildcard = "[a-z0-9'-]+(?:\\s+[a-z0-9'-]+){0,3}";
 
-            if (!hasWildcard && /^[a-z]+(?:['-][a-z]+)*$/i.test(normalizedPhrase)) {
-                const inflectedPattern = getVocabInflectedForms(normalizedPhrase)
+            const phraseWords = normalizedPhrase.split(" ").filter(Boolean);
+            const canInflectFirstWord = !hasWildcard
+                && phraseWords.length > 0
+                && phraseWords.every(word => /^[a-z]+(?:['-][a-z]+)*$/i.test(word));
+
+            if (canInflectFirstWord) {
+                const firstWordPattern = getVocabInflectedForms(phraseWords[0])
                     .map(form => escapeRegExp(form))
                     .join("|");
+                const remainingPhrasePattern = phraseWords
+                    .slice(1)
+                    .map(word => escapeRegExp(word))
+                    .join("\\s+");
+                const inflectedPattern = remainingPhrasePattern
+                    ? `(?:${firstWordPattern})\\s+${remainingPhrasePattern}`
+                    : `(?:${firstWordPattern})`;
                 return new RegExp(`(^|[^a-z0-9])(${inflectedPattern})(?=$|[^a-z0-9])`, "i");
             }
 
