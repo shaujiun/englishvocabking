@@ -1785,6 +1785,13 @@
             return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         }
 
+        function normalizeVocabPhraseForMatching(phrase) {
+            return String(phrase || "")
+                .trim()
+                .replace(/\((?:s|es)\)(?=$|\s)/gi, "")
+                .replace(/\s+/g, " ");
+        }
+
         function getVocabInflectedForms(phrase) {
             const word = String(phrase || "").trim().toLowerCase();
             if (!/^[a-z]+(?:['-][a-z]+)*$/.test(word)) return [word];
@@ -1860,7 +1867,7 @@
         }
 
         function getVocabSentenceRegex(phrase) {
-            const normalizedPhrase = String(phrase || "").trim().replace(/\s+/g, " ");
+            const normalizedPhrase = normalizeVocabPhraseForMatching(phrase);
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
             const wildcard = "[a-z0-9'-]+(?:\\s+[a-z0-9'-]+){0,3}";
 
