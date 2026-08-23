@@ -1884,8 +1884,28 @@
 
             const pattern = normalizedPhrase
                 .split(/(?:\.{3}|…)/)
-                .map(part => escapeRegExp(part.trim()).replace(/\s+/g, "\\s+"))
+                .map(part => part.trim())
                 .filter(Boolean)
+                .map((part, index) => {
+                    const partWords = part.split(/\s+/).filter(Boolean);
+                    const canInflectPart = index === 0
+                        && partWords.length > 0
+                        && partWords.every(word => /^[a-z]+(?:['-][a-z]+)*$/i.test(word));
+                    if (!canInflectPart) {
+                        return escapeRegExp(part).replace(/\s+/g, "\\s+");
+                    }
+
+                    const firstWordPattern = getVocabInflectedForms(partWords[0])
+                        .map(form => escapeRegExp(form))
+                        .join("|");
+                    const remainingPartPattern = partWords
+                        .slice(1)
+                        .map(word => escapeRegExp(word))
+                        .join("\\s+");
+                    return remainingPartPattern
+                        ? `(?:${firstWordPattern})\\s+${remainingPartPattern}`
+                        : `(?:${firstWordPattern})`;
+                })
                 .join(`\\s+${wildcard}\\s+`);
 
             if (!pattern) return null;
