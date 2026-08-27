@@ -10,6 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- DOCX ZIP parser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Text-based PDF parser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
@@ -739,6 +741,51 @@
                         </div>
                     </div>
 
+                    <div class="bg-white rounded-3xl p-6 md:p-7 border border-emerald-100 shadow-sm mb-8">
+                        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5 mb-5">
+                            <div>
+                                <h3 class="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-file-circle-plus text-emerald-600"></i> Word／PDF 情境例句批次匯入
+                                </h3>
+                                <p class="text-slate-500 text-xs mt-1 leading-relaxed">讀取冊別、課別、單字、中文義與中英例句，只補入現有單字卡的空缺；不新增單字、不覆蓋既有例句。</p>
+                            </div>
+                            <div class="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-xs text-emerald-900 leading-relaxed xl:max-w-lg">
+                                <i class="fa-solid fa-shield-heart mr-1"></i>
+                                每個單字最多保留 3 句。重複句、已滿 3 句、找不到單字或翻譯不符者會列入報告，確認前不會寫入資料庫。
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-4 items-end">
+                            <label class="block min-w-0">
+                                <span class="block text-xs font-bold text-slate-600 mb-1.5">例句檔案（DOCX 或可選取文字的 PDF）</span>
+                                <input id="vocab-example-files" type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" multiple class="block w-full text-xs text-slate-500 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-50 file:px-4 file:py-2.5 file:font-bold file:text-emerald-700 hover:file:bg-emerald-100">
+                            </label>
+                            <button id="example-import-preview-btn" type="button" onclick="previewVocabularyExampleFiles()" class="w-full lg:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md shadow-emerald-100 whitespace-nowrap">
+                                <i class="fa-solid fa-magnifying-glass mr-1"></i> 讀取並預覽例句
+                            </button>
+                        </div>
+
+                        <div id="example-import-preview" class="hidden mt-6 rounded-2xl border border-emerald-100 overflow-hidden">
+                            <div class="bg-emerald-50 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                <div>
+                                    <p id="example-import-summary" class="font-extrabold text-sm text-emerald-950"></p>
+                                    <p id="example-import-warning" class="text-xs text-amber-800 mt-1 leading-relaxed"></p>
+                                </div>
+                                <button id="example-import-confirm-btn" type="button" onclick="importPreviewedVocabularyExamples()" class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold px-5 py-2.5 rounded-xl text-xs whitespace-nowrap">
+                                    <i class="fa-solid fa-cloud-arrow-up mr-1"></i> 確認補入例句
+                                </button>
+                            </div>
+                            <div class="max-h-[32rem] overflow-auto">
+                                <table class="w-full min-w-[940px] text-left text-xs">
+                                    <thead class="sticky top-0 z-10 bg-white border-b border-slate-100 text-slate-500">
+                                        <tr><th class="px-3 py-2">冊／課</th><th class="px-3 py-2">單字與中文義</th><th class="px-3 py-2">檔案例句</th><th class="px-3 py-2">比對結果</th><th class="px-3 py-2">處理方式</th></tr>
+                                    </thead>
+                                    <tbody id="example-import-preview-body" class="divide-y divide-slate-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
                         <!-- 左側：新增與編輯表單 -->
                         <div class="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-100 shadow-sm h-fit">
@@ -1357,6 +1404,8 @@
         let releaseSettings = JSON.parse(JSON.stringify(DEFAULT_RELEASE_SETTINGS));
         let pendingWordImportRows = [];
         let pendingWordImportWarnings = [];
+        let pendingExampleImportSourceRows = [];
+        let pendingExampleImportPlan = null;
         const lastExampleSentenceByVocab = new Map();
         let masteredWords = new Set();
         let users = [...DEFAULT_USERS];
@@ -2624,6 +2673,7 @@
             const selected = shuffled.slice(0, Math.min(3, shuffled.length));
 
             selected.forEach(item => {
+                const example = getEditableExamplesForItem(item)[0];
                 const card = document.createElement('div');
                 card.className = "bg-slate-50 border border-slate-100 rounded-2xl p-5 hover:bg-sky-50/40 transition-all flex flex-col justify-between";
                 card.innerHTML = `
@@ -2639,7 +2689,7 @@
                     </div>
                     <div class="mt-4 pt-3 border-t border-slate-100/80">
                         <p class="text-[10px] text-slate-400 italic">例句拼讀：</p>
-                        <p class="text-[11px] text-slate-600 line-clamp-2 mt-0.5" title="${item.sentence}">${item.sentence}</p>
+                        <p class="text-[11px] text-slate-600 line-clamp-2 mt-0.5" title="${escapeHtml(example?.sentence || "")}">${escapeHtml(example?.sentence || "尚未建立例句")}</p>
                     </div>
                 `;
                 container.appendChild(card);
@@ -2849,6 +2899,7 @@
             filteredVocabulary.forEach(({ item, index }) => {
                 const itemKey = getVocabKey(item);
                 const isMastered = masteredWords.has(itemKey) || masteredWords.has(item.word);
+                const example = getEditableExamplesForItem(item)[0];
                 const card = document.createElement('div');
                 card.className = `bg-white border rounded-3xl p-5 hover:shadow-md transition-all flex flex-col justify-between ${isMastered ? 'border-emerald-200 shadow-emerald-50 bg-emerald-50/10' : 'border-slate-100'}`;
                 
@@ -2873,8 +2924,8 @@
                             <div class="flex items-center gap-1 text-[10px] text-slate-400 font-bold mb-1">
                                 <i class="fa-regular fa-comments"></i> 情境句子挑戰提示
                             </div>
-                            <p class="text-xs text-slate-700 leading-relaxed">${item.sentence}</p>
-                            <p class="text-[11px] text-slate-400 mt-1">${item.sentenceTranslation}</p>
+                            <p class="text-xs text-slate-700 leading-relaxed">${escapeHtml(example?.sentence || "尚未建立例句")}</p>
+                            <p class="text-[11px] text-slate-400 mt-1">${escapeHtml(example?.sentenceTranslation || "")}</p>
                         </div>
                     </div>
                 `;
@@ -3264,6 +3315,519 @@
             return rows;
         }
 
+        function normalizeExampleImportWord(value) {
+            return String(value || "")
+                .normalize("NFKC")
+                .replace(/[’‘]/g, "'")
+                .replace(/…/g, "...")
+                .replace(/\s+/g, " ")
+                .trim()
+                .toLowerCase();
+        }
+
+        function normalizeExampleImportMeaning(value) {
+            return String(value || "")
+                .normalize("NFKC")
+                .replace(/[\s　,，.。;；、:：()（）\[\]【】]/g, "")
+                .trim()
+                .toLowerCase();
+        }
+
+        function normalizeExampleImportSentence(value) {
+            return String(value || "")
+                .normalize("NFKC")
+                .replace(/[’‘]/g, "'")
+                .replace(/\s+/g, " ")
+                .trim()
+                .toLowerCase();
+        }
+
+        function detectVocabularyLesson(value) {
+            const text = String(value || "");
+            const chineseNumbers = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6 };
+            const match = text.match(/\bLesson\s*([1-6])\b/i)
+                || text.match(/\bL\s*([1-6])\b/i)
+                || text.match(/第\s*([一二三四五六1-6])\s*課/)
+                || text.match(/課次\s*[:：]?\s*([一二三四五六1-6])/);
+            if (!match) return null;
+            return `L${Number(match[1]) || chineseNumbers[match[1]]}`;
+        }
+
+        function getExampleTableHeaderMap(cells) {
+            const headers = cells.map(cell => getXmlElementText(cell).replace(/\s+/g, ""));
+            const find = patterns => headers.findIndex(header => patterns.some(pattern => pattern.test(header)));
+            return {
+                word: find([/單字/, /片語/, /^英文$/]),
+                meaning: find([/中文義/, /中文解釋/, /中文字義/, /^中文$/]),
+                sentence: find([/英文例句/, /情境句子/, /例句英文/]),
+                translation: find([/中文翻譯/, /例句翻譯/, /翻譯中文/])
+            };
+        }
+
+        function pairExampleParagraphs(sentenceLines, translationLines) {
+            const pairCount = Math.max(sentenceLines.length, translationLines.length);
+            const stripOrdinal = value => String(value || "").replace(/^\s*[123]\s*[.．、)）]\s*/, "").trim();
+            return Array.from({ length: pairCount }, (_, index) => ({
+                sentence: stripOrdinal(sentenceLines[index]),
+                sentenceTranslation: stripOrdinal(translationLines[index])
+            })).filter(pair => pair.sentence || pair.sentenceTranslation);
+        }
+
+        async function parseVocabularyExampleDocx(file) {
+            if (!window.JSZip) throw new Error("Word 解析套件尚未載入，請確認網路後重新整理。");
+            const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+            const documentEntry = zip.file("word/document.xml");
+            if (!documentEntry) throw new Error(`${file.name} 不是可讀取的 Word DOCX 檔案。`);
+
+            const xmlText = await documentEntry.async("string");
+            const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+            if (xml.querySelector("parsererror")) throw new Error(`${file.name} 的 Word 內容無法解析。`);
+
+            const body = xml.getElementsByTagNameNS("*", "body")[0];
+            let currentBook = detectVocabularyBook(file.name) || null;
+            let currentLesson = null;
+            const rows = [];
+
+            Array.from(body?.childNodes || []).forEach(node => {
+                if (node.nodeType !== 1) return;
+                if (node.localName === "p") {
+                    const paragraphText = getXmlElementText(node);
+                    currentBook = detectVocabularyBook(paragraphText) || currentBook;
+                    currentLesson = detectVocabularyLesson(paragraphText) || currentLesson;
+                    return;
+                }
+                if (node.localName !== "tbl") return;
+
+                const tableRows = Array.from(node.childNodes).filter(child => child.nodeType === 1 && child.localName === "tr");
+                if (tableRows.length < 2) return;
+                const headerCells = Array.from(tableRows[0].childNodes).filter(child => child.nodeType === 1 && child.localName === "tc");
+                const headerMap = getExampleTableHeaderMap(headerCells);
+                if ([headerMap.word, headerMap.meaning, headerMap.sentence, headerMap.translation].some(index => index < 0)) return;
+
+                tableRows.slice(1).forEach(tableRow => {
+                    const cells = Array.from(tableRow.childNodes).filter(child => child.nodeType === 1 && child.localName === "tc");
+                    const word = getXmlElementText(cells[headerMap.word]);
+                    const meaning = getXmlElementText(cells[headerMap.meaning]);
+                    const sentenceLines = getCellParagraphTexts(cells[headerMap.sentence]);
+                    const translationLines = getCellParagraphTexts(cells[headerMap.translation]);
+                    if (!word || !meaning || !currentBook || !currentLesson) return;
+                    const examples = pairExampleParagraphs(sentenceLines, translationLines);
+                    if (examples.length === 0) return;
+                    rows.push({ book: currentBook, lesson: currentLesson, word, translation: meaning, examples, sourceFile: file.name });
+                });
+            });
+
+            if (rows.length === 0) {
+                throw new Error(`${file.name} 找不到含有「單字、中文義、英文例句、中文翻譯」的表格。`);
+            }
+            return rows;
+        }
+
+        function groupPdfTextItemsIntoLines(items) {
+            const lines = [];
+            items
+                .filter(item => String(item.str || "").trim())
+                .map(item => ({ text: String(item.str || "").trim(), x: item.transform?.[4] || 0, y: item.transform?.[5] || 0 }))
+                .sort((a, b) => b.y - a.y || a.x - b.x)
+                .forEach(item => {
+                    let line = lines.find(candidate => Math.abs(candidate.y - item.y) <= 2.2);
+                    if (!line) {
+                        line = { y: item.y, items: [] };
+                        lines.push(line);
+                    }
+                    line.items.push(item);
+                });
+            return lines
+                .sort((a, b) => b.y - a.y)
+                .map(line => ({ ...line, items: line.items.sort((a, b) => a.x - b.x) }));
+        }
+
+        function getPdfHeaderColumns(line) {
+            const findX = patterns => line.items.find(item => patterns.some(pattern => pattern.test(item.text)))?.x;
+            const starts = [
+                findX([/^編號$/, /^序號$/]),
+                findX([/單字/, /片語/]),
+                findX([/中文義/, /中文解釋/, /中文字義/]),
+                findX([/^句$/, /^序$/]),
+                findX([/英文例句/, /情境句子/]),
+                findX([/中文翻譯/, /例句翻譯/])
+            ];
+            return starts.every(value => Number.isFinite(value)) ? starts : null;
+        }
+
+        function splitPdfLineIntoCells(line, columnStarts) {
+            const boundaries = columnStarts.slice(0, -1).map((start, index) => (start + columnStarts[index + 1]) / 2);
+            const cells = Array.from({ length: columnStarts.length }, () => []);
+            line.items.forEach(item => {
+                let columnIndex = boundaries.findIndex(boundary => item.x < boundary);
+                if (columnIndex < 0) columnIndex = columnStarts.length - 1;
+                cells[columnIndex].push(item.text);
+            });
+            return cells.map(parts => parts.join(" ").replace(/\s+/g, " ").trim());
+        }
+
+        async function parseVocabularyExamplePdf(file) {
+            if (!window.pdfjsLib) throw new Error("PDF 解析套件尚未載入，請確認網路後重新整理。");
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+            let currentBook = detectVocabularyBook(file.name) || null;
+            let currentLesson = null;
+            let columnStarts = null;
+            let currentRow = null;
+            const rows = [];
+            let extractedTextLength = 0;
+
+            const finishCurrentRow = () => {
+                if (!currentRow) return;
+                currentRow.examples = pairExampleParagraphs(currentRow.sentenceLines, currentRow.translationLines);
+                delete currentRow.sentenceLines;
+                delete currentRow.translationLines;
+                if (currentRow.book && currentRow.lesson && currentRow.word && currentRow.translation && currentRow.examples.length) {
+                    rows.push(currentRow);
+                }
+                currentRow = null;
+            };
+
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+                const page = await pdf.getPage(pageNumber);
+                const textContent = await page.getTextContent();
+                extractedTextLength += textContent.items.reduce((sum, item) => sum + String(item.str || "").trim().length, 0);
+                const lines = groupPdfTextItemsIntoLines(textContent.items);
+
+                lines.forEach(line => {
+                    const fullText = line.items.map(item => item.text).join(" ").replace(/\s+/g, " ").trim();
+                    currentBook = detectVocabularyBook(fullText) || currentBook;
+                    const detectedLesson = /Lesson|課次|第\s*[1-6]\s*課|\bL\s*[1-6]\b/i.test(fullText)
+                        ? detectVocabularyLesson(fullText)
+                        : null;
+                    if (detectedLesson) currentLesson = detectedLesson;
+
+                    const detectedColumns = getPdfHeaderColumns(line);
+                    if (detectedColumns) {
+                        finishCurrentRow();
+                        columnStarts = detectedColumns;
+                        return;
+                    }
+                    if (!columnStarts || !currentLesson) return;
+
+                    const cells = splitPdfLineIntoCells(line, columnStarts);
+                    const rowNumber = cells[0].match(/^\s*(\d{1,3})\s*$/);
+                    if (rowNumber && cells[1] && cells[2]) {
+                        finishCurrentRow();
+                        currentRow = {
+                            book: currentBook,
+                            lesson: currentLesson,
+                            word: cells[1],
+                            translation: cells[2],
+                            sentenceLines: cells[4] ? [cells[4]] : [],
+                            translationLines: cells[5] ? [cells[5]] : [],
+                            sourceFile: file.name
+                        };
+                        return;
+                    }
+                    if (!currentRow) return;
+                    if (cells[4]) {
+                        if (/^[123]$/.test(cells[3]) || currentRow.sentenceLines.length === 0) currentRow.sentenceLines.push(cells[4]);
+                        else currentRow.sentenceLines[currentRow.sentenceLines.length - 1] += ` ${cells[4]}`;
+                    }
+                    if (cells[5]) {
+                        if (/^[123]$/.test(cells[3]) || currentRow.translationLines.length === 0) currentRow.translationLines.push(cells[5]);
+                        else currentRow.translationLines[currentRow.translationLines.length - 1] += cells[5];
+                    }
+                });
+            }
+            finishCurrentRow();
+
+            if (extractedTextLength < 50) {
+                throw new Error(`${file.name} 可能是掃描圖片 PDF，目前僅支援可選取文字的 PDF。`);
+            }
+            if (rows.length === 0) {
+                throw new Error(`${file.name} 未辨識到例句表格；請改用原始 DOCX，或將 PDF 匯出為保留文字的表格版。`);
+            }
+            return rows;
+        }
+
+        async function loadVocabularyExampleImportReference() {
+            const [{ data: vocabularyRows, error: vocabularyError }, { data: exampleRows, error: exampleError }] = await Promise.all([
+                db.from("vocabulary").select("*"),
+                db.from("vocabulary_examples").select("id,vocabulary_id,sentence,sentence_translation,suitable_for_a,suitable_for_b,display_order,is_active")
+            ]);
+            if (vocabularyError) throw vocabularyError;
+            if (exampleError) throw exampleError;
+            return {
+                vocabularyRows: (vocabularyRows || []).map(mapVocabRow),
+                exampleRows: exampleRows || []
+            };
+        }
+
+        function buildVocabularyExampleImportPlan(sourceRows, vocabularyRows, exampleRows) {
+            const vocabByWord = new Map();
+            vocabularyRows.forEach(item => {
+                const key = `${item.book || "B1"}::${item.lesson || "L1"}::${normalizeExampleImportWord(item.word)}`;
+                const current = vocabByWord.get(key) || [];
+                current.push(item);
+                vocabByWord.set(key, current);
+            });
+
+            const storedByVocabularyId = new Map();
+            exampleRows.forEach(example => {
+                const key = String(example.vocabulary_id);
+                const current = storedByVocabularyId.get(key) || [];
+                current.push(example);
+                storedByVocabularyId.set(key, current);
+            });
+
+            const mutableActiveSentences = new Map();
+            const allStoredSentences = new Map();
+            vocabularyRows.forEach(item => {
+                const itemId = String(item.id);
+                const active = [];
+                const all = [];
+                const append = (sentence, isActive = true) => {
+                    const normalized = normalizeExampleImportSentence(sentence);
+                    if (!normalized) return;
+                    if (!all.includes(normalized)) all.push(normalized);
+                    if (isActive && !active.includes(normalized)) active.push(normalized);
+                };
+                append(item.sentence, true);
+                (storedByVocabularyId.get(itemId) || []).forEach(example => append(example.sentence, example.is_active !== false));
+                mutableActiveSentences.set(itemId, active);
+                allStoredSentences.set(itemId, all);
+            });
+
+            const results = sourceRows.map(source => {
+                const wordKey = `${source.book || ""}::${source.lesson || ""}::${normalizeExampleImportWord(source.word)}`;
+                const wordMatches = vocabByWord.get(wordKey) || [];
+                const exactMatches = wordMatches.filter(item => (
+                    normalizeExampleImportMeaning(item.translation) === normalizeExampleImportMeaning(source.translation)
+                ));
+                const result = {
+                    ...source,
+                    matchedVocabulary: null,
+                    plannedExamples: [],
+                    duplicateCount: 0,
+                    invalidCount: 0,
+                    fullCount: 0,
+                    status: "matched",
+                    statusDetail: ""
+                };
+                if (exactMatches.length === 0) {
+                    result.status = wordMatches.length ? "meaning-mismatch" : "missing";
+                    result.statusDetail = wordMatches.length
+                        ? `找到同冊同課單字，但中文義為「${wordMatches.map(item => item.translation).join("／")}」`
+                        : "資料庫沒有同冊、同課、同單字與同中文義的資料";
+                    return result;
+                }
+                if (exactMatches.length > 1) {
+                    result.status = "ambiguous";
+                    result.statusDetail = "資料庫有多筆相同冊別、課別、單字與中文義，為避免誤寫入已停止匯入";
+                    return result;
+                }
+
+                const item = exactMatches[0];
+                result.matchedVocabulary = item;
+                const itemId = String(item.id);
+                const activeSentences = mutableActiveSentences.get(itemId) || [];
+                const storedSentences = allStoredSentences.get(itemId) || [];
+                const sourceSeen = new Set();
+                (source.examples || []).forEach(example => {
+                    const sentence = String(example.sentence || "").trim();
+                    const sentenceTranslation = String(example.sentenceTranslation || "").trim();
+                    const normalizedSentence = normalizeExampleImportSentence(sentence);
+                    if (!sentence || !sentenceTranslation || !sentenceContainsVocabPhrase(sentence, item.word)) {
+                        result.invalidCount += 1;
+                        return;
+                    }
+                    if (sourceSeen.has(normalizedSentence) || storedSentences.includes(normalizedSentence) || activeSentences.includes(normalizedSentence)) {
+                        result.duplicateCount += 1;
+                        return;
+                    }
+                    sourceSeen.add(normalizedSentence);
+                    if (activeSentences.length >= 3) {
+                        result.fullCount += 1;
+                        return;
+                    }
+                    const planned = { sentence, sentenceTranslation, displayOrder: activeSentences.length + 1 };
+                    result.plannedExamples.push(planned);
+                    activeSentences.push(normalizedSentence);
+                    storedSentences.push(normalizedSentence);
+                });
+                result.statusDetail = result.plannedExamples.length
+                    ? `可新增 ${result.plannedExamples.length} 句`
+                    : (activeSentences.length >= 3 ? "現有例句已滿 3 句" : "沒有可安全新增的例句");
+                return result;
+            });
+
+            const stats = results.reduce((summary, result) => {
+                summary.sourceWords += 1;
+                summary.sourceExamples += (result.examples || []).length;
+                summary.newExamples += result.plannedExamples.length;
+                summary.duplicates += result.duplicateCount;
+                summary.invalid += result.invalidCount;
+                summary.full += result.fullCount;
+                if (["missing", "meaning-mismatch", "ambiguous"].includes(result.status)) summary.unmatchedWords += 1;
+                if (result.plannedExamples.length) summary.matchedWords += 1;
+                return summary;
+            }, { sourceWords: 0, sourceExamples: 0, newExamples: 0, duplicates: 0, invalid: 0, full: 0, unmatchedWords: 0, matchedWords: 0 });
+
+            return { results, stats };
+        }
+
+        function renderVocabularyExampleImportPreview() {
+            const container = document.getElementById("example-import-preview");
+            const tbody = document.getElementById("example-import-preview-body");
+            const summary = document.getElementById("example-import-summary");
+            const warning = document.getElementById("example-import-warning");
+            const confirmButton = document.getElementById("example-import-confirm-btn");
+            if (!container || !tbody || !summary || !warning || !confirmButton || !pendingExampleImportPlan) return;
+
+            const { results, stats } = pendingExampleImportPlan;
+            summary.textContent = `讀取 ${stats.sourceWords} 個單字、${stats.sourceExamples} 句；可安全補入 ${stats.newExamples} 句，涵蓋 ${stats.matchedWords} 個現有單字。`;
+            const warnings = [];
+            if (stats.duplicates) warnings.push(`${stats.duplicates} 句重複`);
+            if (stats.full) warnings.push(`${stats.full} 句因已滿 3 句而略過`);
+            if (stats.invalid) warnings.push(`${stats.invalid} 句缺少翻譯或未包含目標單字`);
+            if (stats.unmatchedWords) warnings.push(`${stats.unmatchedWords} 個單字找不到唯一對應資料`);
+            warning.textContent = warnings.length ? `不會匯入：${warnings.join("、")}。可在下表查看原因。` : "所有資料均通過比對，可確認匯入。";
+            confirmButton.disabled = stats.newExamples === 0;
+
+            const statusClass = result => {
+                if (result.plannedExamples.length) return "bg-emerald-50 text-emerald-700";
+                if (["missing", "meaning-mismatch", "ambiguous"].includes(result.status)) return "bg-rose-50 text-rose-700";
+                return "bg-amber-50 text-amber-700";
+            };
+            tbody.innerHTML = results.map(result => {
+                const sourceExamples = (result.examples || []).map((example, index) => `
+                    <div class="${index ? "mt-2 pt-2 border-t border-slate-100" : ""}">
+                        <p class="font-medium text-slate-700">${escapeHtml(example.sentence || "（缺英文）")}</p>
+                        <p class="text-slate-400 mt-0.5">${escapeHtml(example.sentenceTranslation || "（缺中文翻譯）")}</p>
+                    </div>
+                `).join("");
+                const notes = [];
+                if (result.duplicateCount) notes.push(`重複 ${result.duplicateCount} 句`);
+                if (result.fullCount) notes.push(`容量已滿 ${result.fullCount} 句`);
+                if (result.invalidCount) notes.push(`格式或單字檢查未通過 ${result.invalidCount} 句`);
+                return `
+                    <tr class="align-top hover:bg-slate-50/60">
+                        <td class="px-3 py-3 font-bold text-indigo-700 whitespace-nowrap">${escapeHtml(result.book || "未判讀")}／${escapeHtml(result.lesson || "未判讀")}</td>
+                        <td class="px-3 py-3 min-w-[170px]"><p class="font-extrabold text-slate-800">${escapeHtml(result.word)}</p><p class="text-slate-500 mt-1">${escapeHtml(result.translation)}</p></td>
+                        <td class="px-3 py-3 min-w-[330px]">${sourceExamples}</td>
+                        <td class="px-3 py-3 min-w-[190px]"><span class="inline-block px-2 py-1 rounded-lg font-bold ${statusClass(result)}">${escapeHtml(result.statusDetail)}</span>${notes.length ? `<p class="mt-2 text-[10px] text-amber-700">${escapeHtml(notes.join("；"))}</p>` : ""}</td>
+                        <td class="px-3 py-3 min-w-[150px] text-slate-600 font-medium">${result.plannedExamples.length ? `補入 ${result.plannedExamples.length} 句，A／B 組皆可使用` : "不寫入資料庫"}</td>
+                    </tr>
+                `;
+            }).join("");
+            container.classList.remove("hidden");
+        }
+
+        async function previewVocabularyExampleFiles() {
+            const files = Array.from(document.getElementById("vocab-example-files")?.files || []);
+            if (files.length === 0) {
+                showToast("請先選擇 Word DOCX 或可選取文字的 PDF 檔案。", "info");
+                return;
+            }
+            const button = document.getElementById("example-import-preview-btn");
+            const originalHtml = button?.innerHTML;
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 解析中';
+            }
+            try {
+                const parsedGroups = [];
+                for (const file of files) {
+                    const extension = file.name.split(".").pop()?.toLowerCase();
+                    if (extension === "docx") parsedGroups.push(await parseVocabularyExampleDocx(file));
+                    else if (extension === "pdf") parsedGroups.push(await parseVocabularyExamplePdf(file));
+                    else throw new Error(`${file.name} 不是支援的 DOCX 或 PDF 格式。`);
+                }
+
+                const mergedRows = new Map();
+                parsedGroups.flat().forEach(row => {
+                    const key = `${row.book}::${row.lesson}::${normalizeExampleImportWord(row.word)}::${normalizeExampleImportMeaning(row.translation)}`;
+                    const existing = mergedRows.get(key);
+                    if (!existing) {
+                        mergedRows.set(key, { ...row, examples: [...row.examples] });
+                    } else {
+                        existing.examples.push(...row.examples);
+                    }
+                });
+                pendingExampleImportSourceRows = [...mergedRows.values()];
+                const reference = await loadVocabularyExampleImportReference();
+                pendingExampleImportPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, reference.vocabularyRows, reference.exampleRows);
+                renderVocabularyExampleImportPreview();
+                showToast(`例句預覽完成，可新增 ${pendingExampleImportPlan.stats.newExamples} 句。`, "success");
+            } catch (error) {
+                console.error(error);
+                pendingExampleImportSourceRows = [];
+                pendingExampleImportPlan = null;
+                document.getElementById("example-import-preview")?.classList.add("hidden");
+                showToast(error.message || "例句檔案解析失敗。", "error");
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHtml;
+                }
+            }
+        }
+
+        async function importPreviewedVocabularyExamples() {
+            if (pendingExampleImportSourceRows.length === 0) {
+                showToast("請先讀取並預覽例句檔案。", "info");
+                return;
+            }
+            const button = document.getElementById("example-import-confirm-btn");
+            const originalHtml = button?.innerHTML;
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 匯入中';
+            }
+            try {
+                const reference = await loadVocabularyExampleImportReference();
+                const latestPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, reference.vocabularyRows, reference.exampleRows);
+                const insertRows = latestPlan.results.flatMap(result => result.plannedExamples.map(example => ({
+                    vocabulary_id: result.matchedVocabulary.id,
+                    sentence: example.sentence,
+                    sentence_translation: example.sentenceTranslation,
+                    suitable_for_a: true,
+                    suitable_for_b: true,
+                    display_order: example.displayOrder,
+                    is_active: true
+                })));
+                if (insertRows.length === 0) {
+                    pendingExampleImportPlan = latestPlan;
+                    renderVocabularyExampleImportPreview();
+                    showToast("重新檢查後沒有可新增的例句，資料庫未變更。", "info");
+                    return;
+                }
+
+                const chunkSize = 150;
+                for (let index = 0; index < insertRows.length; index += chunkSize) {
+                    const chunk = insertRows.slice(index, index + chunkSize);
+                    const { error } = await db
+                        .from("vocabulary_examples")
+                        .upsert(chunk, { onConflict: "vocabulary_id,sentence", ignoreDuplicates: true });
+                    if (error) throw error;
+                }
+
+                await loadSavedVocab();
+                renderAdminList();
+                renderVocabList();
+                const insertedCount = insertRows.length;
+                const refreshedReference = await loadVocabularyExampleImportReference();
+                pendingExampleImportPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, refreshedReference.vocabularyRows, refreshedReference.exampleRows);
+                renderVocabularyExampleImportPreview();
+                showToast(`例句匯入完成：已補入 ${insertedCount} 句，A／B 組皆可使用。`, "success");
+            } catch (error) {
+                console.error(error);
+                showToast(`例句匯入失敗：${error.message || "請確認管理員權限與資料格式。"}`, "error");
+            } finally {
+                if (button) {
+                    button.disabled = pendingExampleImportPlan?.stats?.newExamples === 0;
+                    button.innerHTML = originalHtml;
+                }
+            }
+        }
+
         function renderWordImportPreview() {
             const container = document.getElementById("word-import-preview");
             const tbody = document.getElementById("word-import-preview-body");
@@ -3477,6 +4041,7 @@
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50/50 transition-colors";
                 const exampleStatus = getVocabularyExampleStatus(item);
+                const firstExample = getEditableExamplesForItem(item)[0];
                 tr.innerHTML = `
                     <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(item.word)}</td>
                     <td class="py-3 px-4"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">${escapeHtml(item.book || "B1")}-${escapeHtml(item.lesson || "L1")}</span></td>
@@ -3486,8 +4051,8 @@
                         <p class="mt-1 text-[10px] ${exampleStatus.complete ? "text-emerald-600" : "text-amber-600"}">${escapeHtml(exampleStatus.label)}</p>
                     </td>
                     <td class="py-3 px-4 max-w-xs">
-                        <p class="text-slate-700 font-medium line-clamp-1" title="${escapeHtml(item.sentence)}">${escapeHtml(item.sentence || "尚未建立例句")}</p>
-                        <p class="text-slate-400 text-[10px] line-clamp-1" title="${escapeHtml(item.sentenceTranslation)}">${escapeHtml(item.sentenceTranslation || "可先使用單字、拼字與配對遊戲")}</p>
+                        <p class="text-slate-700 font-medium line-clamp-1" title="${escapeHtml(firstExample?.sentence || "")}">${escapeHtml(firstExample?.sentence || "尚未建立例句")}</p>
+                        <p class="text-slate-400 text-[10px] line-clamp-1" title="${escapeHtml(firstExample?.sentenceTranslation || "")}">${escapeHtml(firstExample?.sentenceTranslation || "可先使用單字、拼字與配對遊戲")}</p>
                     </td>
                     <td class="py-3 px-4 text-center">
                         <div class="flex items-center justify-center gap-2">
@@ -4320,23 +4885,27 @@
             sentenceGameData.correctItem = targetItem;
             sentenceGameData.answered = false;
             sentenceGameData.isReorderMode = learningContext.englishGroup === "A";
+            const selectedExample = pickExampleForItem(targetItem, learningContext.englishGroup) || {
+                sentence: targetItem.sentence,
+                sentenceTranslation: targetItem.sentenceTranslation
+            };
 
             if (sentenceGameData.isReorderMode) {
-                loadSentenceReorderQuestion(targetItem);
+                loadSentenceReorderQuestion(targetItem, selectedExample);
                 return;
             }
 
             document.getElementById('sentence-mode-tag').textContent = "FILL IN THE BLANK";
             document.getElementById('sentence-instruction').textContent = "請選擇最符合句子語境的單字：";
 
-            let maskedSentence = maskVocabPhraseInSentence(targetItem.sentence, targetItem.word);
+            let maskedSentence = maskVocabPhraseInSentence(selectedExample.sentence, targetItem.word);
 
             if (!maskedSentence.includes("_______")) {
-                maskedSentence = targetItem.sentence.replace(targetItem.word, "_______");
+                maskedSentence = selectedExample.sentence.replace(targetItem.word, "_______");
             }
 
             document.getElementById('sentence-question-text').textContent = maskedSentence;
-            document.getElementById('sentence-translation-hint-box').textContent = targetItem.sentenceTranslation;
+            document.getElementById('sentence-translation-hint-box').textContent = selectedExample.sentenceTranslation;
             sentenceGameData.hintTimer = setTimeout(() => {
                 hintBtn.classList.remove('hidden');
                 sentenceGameData.hintTimer = null;
@@ -4380,8 +4949,8 @@
             return shuffled;
         }
 
-        function loadSentenceReorderQuestion(targetItem) {
-            const selectedExample = pickExampleForItem(targetItem, "A") || {
+        function loadSentenceReorderQuestion(targetItem, providedExample = null) {
+            const selectedExample = providedExample || pickExampleForItem(targetItem, "A") || {
                 sentence: targetItem.sentence,
                 sentenceTranslation: targetItem.sentenceTranslation
             };
