@@ -1915,6 +1915,68 @@
             return [...forms].filter(Boolean).sort((left, right) => right.length - left.length);
         }
 
+        function getVocabNounNumberForms(phrase) {
+            const word = String(phrase || "").trim().toLowerCase();
+            if (!/^[a-z]+(?:['-][a-z]+)*$/.test(word)) return [word];
+
+            const nonNounEndings = new Set([
+                "about", "after", "around", "at", "away", "before", "by", "down", "for",
+                "from", "in", "into", "of", "off", "on", "out", "over", "through", "to",
+                "under", "up", "with"
+            ]);
+            if (nonNounEndings.has(word)) return [word];
+
+            const forms = new Set([word]);
+            const irregularPlurals = {
+                child: ["children"],
+                foot: ["feet"],
+                goose: ["geese"],
+                man: ["men"],
+                mouse: ["mice"],
+                person: ["people"],
+                tooth: ["teeth"],
+                woman: ["women"]
+            };
+            (irregularPlurals[word] || []).forEach(form => forms.add(form));
+
+            if (/[^aeiou]y$/.test(word)) forms.add(`${word.slice(0, -1)}ies`);
+            else if (/(?:s|x|z|ch|sh)$/.test(word)) forms.add(`${word}es`);
+            else forms.add(`${word}s`);
+
+            return [...forms].filter(Boolean).sort((left, right) => right.length - left.length);
+        }
+
+        function getVocabPhraseInflectionPattern(words) {
+            if (!words.length) return "";
+
+            const firstWordPattern = getVocabInflectedForms(words[0])
+                .map(form => escapeRegExp(form))
+                .join("|");
+            const remainingLiteralPattern = words
+                .slice(1)
+                .map(word => escapeRegExp(word))
+                .join("\\s+");
+            const patterns = [remainingLiteralPattern
+                ? `(?:${firstWordPattern})\\s+${remainingLiteralPattern}`
+                : `(?:${firstWordPattern})`];
+
+            if (words.length > 1) {
+                const lastWordForms = getVocabNounNumberForms(words.at(-1));
+                if (lastWordForms.length > 1) {
+                    const leadingLiteralPattern = words
+                        .slice(0, -1)
+                        .map(word => escapeRegExp(word))
+                        .join("\\s+");
+                    const lastWordPattern = lastWordForms
+                        .map(form => escapeRegExp(form))
+                        .join("|");
+                    patterns.push(`${leadingLiteralPattern}\\s+(?:${lastWordPattern})`);
+                }
+            }
+
+            return `(?:${[...new Set(patterns)].join("|")})`;
+        }
+
         function getVocabSentenceRegex(phrase) {
             const normalizedPhrase = normalizeVocabPhraseForMatching(phrase);
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
@@ -1926,16 +1988,7 @@
                 && phraseWords.every(word => /^[a-z]+(?:['-][a-z]+)*$/i.test(word));
 
             if (canInflectFirstWord) {
-                const firstWordPattern = getVocabInflectedForms(phraseWords[0])
-                    .map(form => escapeRegExp(form))
-                    .join("|");
-                const remainingPhrasePattern = phraseWords
-                    .slice(1)
-                    .map(word => escapeRegExp(word))
-                    .join("\\s+");
-                const inflectedPattern = remainingPhrasePattern
-                    ? `(?:${firstWordPattern})\\s+${remainingPhrasePattern}`
-                    : `(?:${firstWordPattern})`;
+                const inflectedPattern = getVocabPhraseInflectionPattern(phraseWords);
                 return new RegExp(`(^|[^a-z0-9])(${inflectedPattern})(?=$|[^a-z0-9])`, "i");
             }
 
@@ -1952,16 +2005,7 @@
                         return escapeRegExp(part).replace(/\s+/g, "\\s+");
                     }
 
-                    const firstWordPattern = getVocabInflectedForms(partWords[0])
-                        .map(form => escapeRegExp(form))
-                        .join("|");
-                    const remainingPartPattern = partWords
-                        .slice(1)
-                        .map(word => escapeRegExp(word))
-                        .join("\\s+");
-                    return remainingPartPattern
-                        ? `(?:${firstWordPattern})\\s+${remainingPartPattern}`
-                        : `(?:${firstWordPattern})`;
+                    return getVocabPhraseInflectionPattern(partWords);
                 })
                 .join(`\\s+${wildcard}\\s+`);
 
