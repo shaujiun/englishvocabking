@@ -833,6 +833,12 @@
                                     </div>
                                 </div>
 
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 mb-1.5">個別發布日期 <span class="text-slate-400">（選填）</span></label>
+                                    <input type="date" id="form-release-on" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all">
+                                    <p class="mt-1.5 text-[10px] font-medium leading-relaxed text-slate-400">未填寫時立即開放；設定未來日期後，學生會從當天開始看到這個單字。</p>
+                                </div>
+
                                 <div class="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
                                     <div class="flex items-center justify-between gap-3">
                                         <p class="text-xs font-extrabold text-indigo-800">生活化例句 1 <span class="text-rose-500">（必填）</span></p>
@@ -3103,6 +3109,7 @@
         }
 
         function buildDailyBatchSizesForDays(total, dayCount) {
+            if (total === 1 && dayCount === 1) return [1];
             if (dayCount <= 0 || total < dayCount * 2 || total > dayCount * 3) {
                 throw new Error(`無法把 ${total} 個單字安排在 ${dayCount} 個開放日內。`);
             }
@@ -3137,7 +3144,7 @@
             const allocated = plans.map(plan => ({
                 ...plan,
                 minDays: Math.ceil(plan.lessonRows.length / 3),
-                maxDays: Math.floor(plan.lessonRows.length / 2)
+                maxDays: plan.lessonRows.length === 1 ? 1 : Math.floor(plan.lessonRows.length / 2)
             }));
             allocated.forEach(plan => { plan.activeDays = plan.minDays; });
             let remaining = totalActiveDays - allocated.reduce((sum, plan) => sum + plan.activeDays, 0);
@@ -3196,7 +3203,12 @@
                 if (lessonPlans.length === 0) return;
 
                 const minimumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.ceil(plan.lessonRows.length / 3), 0);
-                const maximumReleaseDays = lessonPlans.reduce((total, plan) => total + Math.floor(plan.lessonRows.length / 2), 0);
+                const maximumReleaseDays = lessonPlans.reduce((total, plan) => {
+                    const lessonMaximum = plan.lessonRows.length === 1
+                        ? 1
+                        : Math.floor(plan.lessonRows.length / 2);
+                    return total + lessonMaximum;
+                }, 0);
                 const deadline = parseIsoDate(pair.deadline);
                 let availableDates;
                 let adjustedEarlier = false;
@@ -4167,6 +4179,8 @@
             const sentenceTranslation = exampleSlots[0].sentenceTranslation;
             const book = document.getElementById('form-book').value;
             const lesson = document.getElementById('form-lesson').value;
+            const releaseOn = document.getElementById('form-release-on').value || null;
+            const releaseLabel = releaseOn ? `預定 ${releaseOn} 開放` : "立即開放";
             const editIndex = document.getElementById('edit-index').value;
 
             const wordLower = word.toLowerCase();
@@ -4200,7 +4214,8 @@
                 sentence,
                 sentence_translation: sentenceTranslation,
                 book,
-                lesson
+                lesson,
+                release_on: releaseOn
             };
             let savedVocabularyId = null;
             let successMessage = "";
@@ -4229,7 +4244,7 @@
                 }
                 vocabulary[parseInt(editIndex)] = mapVocabRow(data);
                 savedVocabularyId = data.id;
-                successMessage = `成功更新單字卡與 ${normalizedSentences.length} 句例句：${word}`;
+                successMessage = `成功更新單字卡與 ${normalizedSentences.length} 句例句：${word}（${releaseLabel}）`;
             } else {
                 if (vocabulary.some(item => item.word.toLowerCase() === wordLower && item.translation.trim() === translation)) {
                     showToast("此單字與中文義項已經存在；若是一字多義，請輸入不同的中文意思。", "error");
@@ -4247,7 +4262,7 @@
                 }
                 vocabulary.push(mapVocabRow(data));
                 savedVocabularyId = data.id;
-                successMessage = `成功新增單字卡與 ${normalizedSentences.length} 句例句：${word} (${book}-${lesson})`;
+                successMessage = `成功新增單字卡與 ${normalizedSentences.length} 句例句：${word} (${book}-${lesson}，${releaseLabel})`;
             }
 
             try {
@@ -4277,6 +4292,7 @@
             document.getElementById('form-translation').value = item.translation;
             document.getElementById('form-book').value = item.book || "B1";
             document.getElementById('form-lesson').value = item.lesson || "L1";
+            document.getElementById('form-release-on').value = item.releaseOn || "";
             Array.from({ length: 3 }, (_, index) => index + 1).forEach((slot, index) => {
                 const example = examples[index];
                 document.getElementById(`form-example-id-${slot}`).value = example?.id || "";
@@ -4319,6 +4335,7 @@
             document.getElementById('form-submit-btn').innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> 儲存單字卡';
             document.getElementById('form-book').value = "B1";
             document.getElementById('form-lesson').value = "L1";
+            document.getElementById('form-release-on').value = "";
             updateExampleFormProgress();
         }
 
