@@ -1877,6 +1877,7 @@
                 sing: ["sings", "sang", "sung", "singing"],
                 sit: ["sits", "sat", "sitting"],
                 speak: ["speaks", "spoke", "spoken", "speaking"],
+                spend: ["spends", "spent", "spending"],
                 swim: ["swims", "swam", "swum", "swimming"],
                 sweep: ["sweeps", "swept", "sweeping"],
                 take: ["takes", "took", "taken", "taking"],
@@ -1888,7 +1889,10 @@
                 write: ["writes", "wrote", "written", "writing"]
             };
 
-            (irregularForms[word] || []).forEach(form => forms.add(form));
+            if (irregularForms[word]) {
+                irregularForms[word].forEach(form => forms.add(form));
+                return [...forms].filter(Boolean).sort((left, right) => right.length - left.length);
+            }
 
             if (/[^aeiou]y$/.test(word)) {
                 forms.add(`${word.slice(0, -1)}ies`);
