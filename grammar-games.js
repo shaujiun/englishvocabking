@@ -621,6 +621,7 @@
 
     const GRAMMAR_BOOKS = {
         ...(window.B1_GRAMMAR ? { B1: window.B1_GRAMMAR } : {}),
+        ...(window.B2_GRAMMAR ? { B2: window.B2_GRAMMAR } : {}),
         B3: {
             code: "B3",
             label: "第 3 冊（八年級上）",
