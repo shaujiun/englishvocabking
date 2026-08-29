@@ -3658,12 +3658,12 @@
                     if (isActive && !active.includes(normalized)) active.push(normalized);
                 };
                 append(item.sentence, true);
-                const inactive = new Set();
+                const inactive = new Map();
                 (storedByVocabularyId.get(itemId) || []).forEach(example => {
                     const normalized = normalizeExampleImportSentence(example.sentence);
                     const isActive = example.is_active === true;
                     append(example.sentence, isActive);
-                    if (normalized && !isActive) inactive.add(normalized);
+                    if (normalized && !isActive && !inactive.has(normalized)) inactive.set(normalized, example);
                 });
                 mutableActiveSentences.set(itemId, active);
                 allStoredSentences.set(itemId, all);
@@ -3704,7 +3704,7 @@
                 const itemId = String(item.id);
                 const activeSentences = mutableActiveSentences.get(itemId) || [];
                 const storedSentences = allStoredSentences.get(itemId) || [];
-                const inactiveSentences = inactiveStoredSentences.get(itemId) || new Set();
+                const inactiveSentences = inactiveStoredSentences.get(itemId) || new Map();
                 const sourceSeen = new Set();
                 (source.examples || []).forEach(example => {
                     const sentence = String(example.sentence || "").trim();
@@ -3723,11 +3723,13 @@
                         result.fullCount += 1;
                         return;
                     }
+                    const inactiveExample = inactiveSentences.get(normalizedSentence);
                     const planned = {
                         sentence,
                         sentenceTranslation,
                         displayOrder: activeSentences.length + 1,
-                        reactivateExisting: inactiveSentences.has(normalizedSentence)
+                        reactivateExisting: Boolean(inactiveExample),
+                        existingExampleId: inactiveExample?.id || null
                     };
                     result.plannedExamples.push(planned);
                     activeSentences.push(normalizedSentence);
@@ -3866,7 +3868,8 @@
             try {
                 const reference = await loadVocabularyExampleImportReference();
                 const latestPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, reference.vocabularyRows, reference.exampleRows);
-                const insertRows = latestPlan.results.flatMap(result => result.plannedExamples.map(example => ({
+                const plannedRows = latestPlan.results.flatMap(result => result.plannedExamples.map(example => ({
+                    existing_example_id: example.existingExampleId || null,
                     vocabulary_id: result.matchedVocabulary.id,
                     sentence: example.sentence,
                     sentence_translation: example.sentenceTranslation,
@@ -3875,16 +3878,33 @@
                     display_order: example.displayOrder,
                     is_active: true
                 })));
-                if (insertRows.length === 0) {
+                if (plannedRows.length === 0) {
                     pendingExampleImportPlan = latestPlan;
                     renderVocabularyExampleImportPreview();
                     showToast("重新檢查後沒有可新增的例句，資料庫未變更。", "info");
                     return;
                 }
 
+                const reactivationRows = plannedRows.filter(row => row.existing_example_id);
+                const insertRows = plannedRows.filter(row => !row.existing_example_id);
+                for (const row of reactivationRows) {
+                    const { error } = await db
+                        .from("vocabulary_examples")
+                        .update({
+                            sentence_translation: row.sentence_translation,
+                            suitable_for_a: true,
+                            suitable_for_b: true,
+                            display_order: row.display_order,
+                            is_active: true
+                        })
+                        .eq("id", row.existing_example_id)
+                        .eq("vocabulary_id", row.vocabulary_id);
+                    if (error) throw error;
+                }
+
                 const chunkSize = 150;
                 for (let index = 0; index < insertRows.length; index += chunkSize) {
-                    const chunk = insertRows.slice(index, index + chunkSize);
+                    const chunk = insertRows.slice(index, index + chunkSize).map(({ existing_example_id, ...row }) => row);
                     const { error } = await db
                         .from("vocabulary_examples")
                         .upsert(chunk, { onConflict: "vocabulary_id,sentence", ignoreDuplicates: false });
@@ -3894,7 +3914,7 @@
                 await loadSavedVocab();
                 renderAdminList();
                 renderVocabList();
-                const insertedCount = insertRows.length;
+                const insertedCount = plannedRows.length;
                 const refreshedReference = await loadVocabularyExampleImportReference();
                 pendingExampleImportPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, refreshedReference.vocabularyRows, refreshedReference.exampleRows);
                 renderVocabularyExampleImportPreview();
