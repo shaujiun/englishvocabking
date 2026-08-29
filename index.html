@@ -1489,15 +1489,22 @@
                 sentenceTranslation: row.sentence_translation,
                 suitableForA: row.suitable_for_a !== false,
                 suitableForB: row.suitable_for_b === true,
-                displayOrder: row.display_order || 0
+                displayOrder: row.display_order || 0,
+                isActive: row.is_active === true
             };
         }
 
+        function isFoundationVocabularyBook(item) {
+            return ["B1", "B2"].includes(String(item?.book || "").toUpperCase());
+        }
+
         function getExamplesForItem(item, groupCode = "A") {
-            const storedExamples = vocabularyExamplesById.get(String(item?.id)) || [];
+            const storedExamples = (vocabularyExamplesById.get(String(item?.id)) || [])
+                .filter(example => example.isActive || isFoundationVocabularyBook(item));
             const normalizedGroup = normalizeEnglishGroup(groupCode);
+            const availableToBothGroups = isFoundationVocabularyBook(item);
             const filtered = storedExamples.filter(example => (
-                normalizedGroup === "A" ? example.suitableForA : example.suitableForB
+                availableToBothGroups || (normalizedGroup === "A" ? example.suitableForA : example.suitableForB)
             ));
             const examples = [...filtered];
             if (item?.sentence && !examples.some(example => example.sentence.trim() === item.sentence.trim())) {
@@ -1515,7 +1522,8 @@
         }
 
         function getEditableExamplesForItem(item) {
-            const storedExamples = vocabularyExamplesById.get(String(item?.id)) || [];
+            const storedExamples = (vocabularyExamplesById.get(String(item?.id)) || [])
+                .filter(example => example.isActive || isFoundationVocabularyBook(item));
             const examples = [];
             const appendUnique = example => {
                 const sentence = String(example?.sentence || "").trim();
@@ -1846,6 +1854,7 @@
                 .trim()
                 .replace(/[’‘`´]/g, "'")
                 .replace(/…/g, "...")
+                .replace(/\(\s*\.{3,}\s*\)/g, "...")
                 .replace(/\((?:s|es)\)(?=$|\s)/gi, "")
                 .replace(/\s+/g, " ");
         }
@@ -1997,7 +2006,7 @@
         function getVocabSentenceRegex(phrase) {
             const normalizedPhrase = normalizeVocabPhraseForMatching(phrase);
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
-            const wildcard = "[a-z0-9'’‘-]+(?:\\s+[a-z0-9'’‘-]+){0,3}";
+            const wildcardGap = "(?:\\s+[a-z0-9'’‘-]+){0,4}\\s+";
 
             const phraseWords = normalizedPhrase.split(" ").filter(Boolean);
             const canInflectFirstWord = !hasWildcard
@@ -2024,7 +2033,7 @@
 
                     return getVocabPhraseInflectionPattern(partWords);
                 })
-                .join(`\\s+${wildcard}\\s+`);
+                .join(wildcardGap);
 
             if (!pattern) return null;
 
@@ -2078,8 +2087,7 @@
             vocabularyExamplesById = new Map();
             const { data: exampleRows, error: exampleError } = await db
                 .from("vocabulary_examples")
-                .select("id,vocabulary_id,sentence,sentence_translation,suitable_for_a,suitable_for_b,display_order")
-                .eq("is_active", true)
+                .select("id,vocabulary_id,sentence,sentence_translation,suitable_for_a,suitable_for_b,display_order,is_active")
                 .order("display_order", { ascending: true });
 
             if (exampleError) {
@@ -3661,7 +3669,7 @@
                 const inactive = new Map();
                 (storedByVocabularyId.get(itemId) || []).forEach(example => {
                     const normalized = normalizeExampleImportSentence(example.sentence);
-                    const isActive = example.is_active === true;
+                    const isActive = isFoundationVocabularyBook(item) || example.is_active === true;
                     append(example.sentence, isActive);
                     if (normalized && !isActive && !inactive.has(normalized)) inactive.set(normalized, example);
                 });
@@ -3693,52 +3701,62 @@
                         : "資料庫沒有同冊、同課、同單字與同中文義的資料";
                     return result;
                 }
-                if (exactMatches.length > 1) {
-                    result.status = "ambiguous";
-                    result.statusDetail = "資料庫有多筆相同冊別、課別、單字與中文義，為避免誤寫入已停止匯入";
-                    return result;
-                }
-
-                const item = exactMatches[0];
-                result.matchedVocabulary = item;
-                const itemId = String(item.id);
-                const activeSentences = mutableActiveSentences.get(itemId) || [];
-                const storedSentences = allStoredSentences.get(itemId) || [];
-                const inactiveSentences = inactiveStoredSentences.get(itemId) || new Map();
                 const sourceSeen = new Set();
+                const validSourceExamples = [];
                 (source.examples || []).forEach(example => {
                     const sentence = String(example.sentence || "").trim();
                     const sentenceTranslation = String(example.sentenceTranslation || "").trim();
                     const normalizedSentence = normalizeExampleImportSentence(sentence);
-                    if (!sentence || !sentenceTranslation || !sentenceContainsVocabPhrase(sentence, item.word)) {
+                    if (!sentence || !sentenceTranslation || !sentenceContainsVocabPhrase(sentence, exactMatches[0].word)) {
                         result.invalidCount += 1;
                         return;
                     }
-                    if (sourceSeen.has(normalizedSentence) || activeSentences.includes(normalizedSentence)) {
+                    if (sourceSeen.has(normalizedSentence)) {
                         result.duplicateCount += 1;
                         return;
                     }
                     sourceSeen.add(normalizedSentence);
-                    if (activeSentences.length >= 3) {
-                        result.fullCount += 1;
-                        return;
-                    }
-                    const inactiveExample = inactiveSentences.get(normalizedSentence);
-                    const planned = {
-                        sentence,
-                        sentenceTranslation,
-                        displayOrder: activeSentences.length + 1,
-                        reactivateExisting: Boolean(inactiveExample),
-                        existingExampleId: inactiveExample?.id || null
-                    };
-                    result.plannedExamples.push(planned);
-                    activeSentences.push(normalizedSentence);
-                    if (!storedSentences.includes(normalizedSentence)) storedSentences.push(normalizedSentence);
-                    inactiveSentences.delete(normalizedSentence);
+                    validSourceExamples.push({ sentence, sentenceTranslation, normalizedSentence });
                 });
+
+                result.matchedVocabulary = exactMatches[0];
+                result.matchedVocabularies = exactMatches;
+                exactMatches.forEach(item => {
+                    const itemId = String(item.id);
+                    const activeSentences = mutableActiveSentences.get(itemId) || [];
+                    const storedSentences = allStoredSentences.get(itemId) || [];
+                    const inactiveSentences = inactiveStoredSentences.get(itemId) || new Map();
+                    validSourceExamples.forEach(({ sentence, sentenceTranslation, normalizedSentence }) => {
+                        if (activeSentences.includes(normalizedSentence)) {
+                            result.duplicateCount += 1;
+                            return;
+                        }
+                        if (activeSentences.length >= 3) {
+                            result.fullCount += 1;
+                            return;
+                        }
+                        const inactiveExample = inactiveSentences.get(normalizedSentence);
+                        result.plannedExamples.push({
+                            vocabularyId: item.id,
+                            sentence,
+                            sentenceTranslation,
+                            displayOrder: activeSentences.length + 1,
+                            reactivateExisting: Boolean(inactiveExample),
+                            existingExampleId: inactiveExample?.id || null
+                        });
+                        activeSentences.push(normalizedSentence);
+                        if (!storedSentences.includes(normalizedSentence)) storedSentences.push(normalizedSentence);
+                        inactiveSentences.delete(normalizedSentence);
+                    });
+                });
+                const allTargetsComplete = exactMatches.every(item => (
+                    (mutableActiveSentences.get(String(item.id)) || []).length >= 3
+                ));
                 result.statusDetail = result.plannedExamples.length
-                    ? `可新增 ${result.plannedExamples.length} 句`
-                    : (activeSentences.length >= 3 ? "現有例句已滿 3 句" : "沒有可安全新增的例句");
+                    ? (exactMatches.length > 1
+                        ? `可同步 ${exactMatches.length} 筆相同單字資料，共補入 ${result.plannedExamples.length} 句`
+                        : `可新增 ${result.plannedExamples.length} 句`)
+                    : (allTargetsComplete ? "現有例句已滿 3 句" : "沒有可安全新增的例句");
                 return result;
             });
 
@@ -3749,7 +3767,7 @@
                 summary.duplicates += result.duplicateCount;
                 summary.invalid += result.invalidCount;
                 summary.full += result.fullCount;
-                if (["missing", "meaning-mismatch", "ambiguous"].includes(result.status)) summary.unmatchedWords += 1;
+                if (["missing", "meaning-mismatch"].includes(result.status)) summary.unmatchedWords += 1;
                 if (result.plannedExamples.length) summary.matchedWords += 1;
                 return summary;
             }, { sourceWords: 0, sourceExamples: 0, newExamples: 0, duplicates: 0, invalid: 0, full: 0, unmatchedWords: 0, matchedWords: 0 });
@@ -3870,7 +3888,7 @@
                 const latestPlan = buildVocabularyExampleImportPlan(pendingExampleImportSourceRows, reference.vocabularyRows, reference.exampleRows);
                 const plannedRows = latestPlan.results.flatMap(result => result.plannedExamples.map(example => ({
                     existing_example_id: example.existingExampleId || null,
-                    vocabulary_id: result.matchedVocabulary.id,
+                    vocabulary_id: example.vocabularyId || result.matchedVocabulary.id,
                     sentence: example.sentence,
                     sentence_translation: example.sentenceTranslation,
                     suitable_for_a: true,
