@@ -1842,9 +1842,16 @@
 
         function normalizeVocabPhraseForMatching(phrase) {
             return String(phrase || "")
+                .normalize("NFKC")
                 .trim()
+                .replace(/[’‘`´]/g, "'")
+                .replace(/…/g, "...")
                 .replace(/\((?:s|es)\)(?=$|\s)/gi, "")
                 .replace(/\s+/g, " ");
+        }
+
+        function escapeVocabMatchToken(text) {
+            return escapeRegExp(text).replace(/'/g, "['’‘]");
         }
 
         function getVocabInflectedForms(phrase) {
@@ -1960,11 +1967,11 @@
             if (!words.length) return "";
 
             const firstWordPattern = getVocabInflectedForms(words[0])
-                .map(form => escapeRegExp(form))
+                .map(form => escapeVocabMatchToken(form))
                 .join("|");
             const remainingLiteralPattern = words
                 .slice(1)
-                .map(word => escapeRegExp(word))
+                .map(word => escapeVocabMatchToken(word))
                 .join("\\s+");
             const patterns = [remainingLiteralPattern
                 ? `(?:${firstWordPattern})\\s+${remainingLiteralPattern}`
@@ -1975,10 +1982,10 @@
                 if (lastWordForms.length > 1) {
                     const leadingLiteralPattern = words
                         .slice(0, -1)
-                        .map(word => escapeRegExp(word))
+                        .map(word => escapeVocabMatchToken(word))
                         .join("\\s+");
                     const lastWordPattern = lastWordForms
-                        .map(form => escapeRegExp(form))
+                        .map(form => escapeVocabMatchToken(form))
                         .join("|");
                     patterns.push(`${leadingLiteralPattern}\\s+(?:${lastWordPattern})`);
                 }
@@ -1990,7 +1997,7 @@
         function getVocabSentenceRegex(phrase) {
             const normalizedPhrase = normalizeVocabPhraseForMatching(phrase);
             const hasWildcard = normalizedPhrase.includes("...") || normalizedPhrase.includes("…");
-            const wildcard = "[a-z0-9'-]+(?:\\s+[a-z0-9'-]+){0,3}";
+            const wildcard = "[a-z0-9'’‘-]+(?:\\s+[a-z0-9'’‘-]+){0,3}";
 
             const phraseWords = normalizedPhrase.split(" ").filter(Boolean);
             const canInflectFirstWord = !hasWildcard
@@ -2012,7 +2019,7 @@
                         && partWords.length > 0
                         && partWords.every(word => /^[a-z]+(?:['-][a-z]+)*$/i.test(word));
                     if (!canInflectPart) {
-                        return escapeRegExp(part).replace(/\s+/g, "\\s+");
+                        return escapeVocabMatchToken(part).replace(/\s+/g, "\\s+");
                     }
 
                     return getVocabPhraseInflectionPattern(partWords);
@@ -3639,6 +3646,7 @@
 
             const mutableActiveSentences = new Map();
             const allStoredSentences = new Map();
+            const inactiveStoredSentences = new Map();
             vocabularyRows.forEach(item => {
                 const itemId = String(item.id);
                 const active = [];
@@ -3650,9 +3658,16 @@
                     if (isActive && !active.includes(normalized)) active.push(normalized);
                 };
                 append(item.sentence, true);
-                (storedByVocabularyId.get(itemId) || []).forEach(example => append(example.sentence, example.is_active !== false));
+                const inactive = new Set();
+                (storedByVocabularyId.get(itemId) || []).forEach(example => {
+                    const normalized = normalizeExampleImportSentence(example.sentence);
+                    const isActive = example.is_active === true;
+                    append(example.sentence, isActive);
+                    if (normalized && !isActive) inactive.add(normalized);
+                });
                 mutableActiveSentences.set(itemId, active);
                 allStoredSentences.set(itemId, all);
+                inactiveStoredSentences.set(itemId, inactive);
             });
 
             const results = sourceRows.map(source => {
@@ -3689,6 +3704,7 @@
                 const itemId = String(item.id);
                 const activeSentences = mutableActiveSentences.get(itemId) || [];
                 const storedSentences = allStoredSentences.get(itemId) || [];
+                const inactiveSentences = inactiveStoredSentences.get(itemId) || new Set();
                 const sourceSeen = new Set();
                 (source.examples || []).forEach(example => {
                     const sentence = String(example.sentence || "").trim();
@@ -3698,7 +3714,7 @@
                         result.invalidCount += 1;
                         return;
                     }
-                    if (sourceSeen.has(normalizedSentence) || storedSentences.includes(normalizedSentence) || activeSentences.includes(normalizedSentence)) {
+                    if (sourceSeen.has(normalizedSentence) || activeSentences.includes(normalizedSentence)) {
                         result.duplicateCount += 1;
                         return;
                     }
@@ -3707,10 +3723,16 @@
                         result.fullCount += 1;
                         return;
                     }
-                    const planned = { sentence, sentenceTranslation, displayOrder: activeSentences.length + 1 };
+                    const planned = {
+                        sentence,
+                        sentenceTranslation,
+                        displayOrder: activeSentences.length + 1,
+                        reactivateExisting: inactiveSentences.has(normalizedSentence)
+                    };
                     result.plannedExamples.push(planned);
                     activeSentences.push(normalizedSentence);
-                    storedSentences.push(normalizedSentence);
+                    if (!storedSentences.includes(normalizedSentence)) storedSentences.push(normalizedSentence);
+                    inactiveSentences.delete(normalizedSentence);
                 });
                 result.statusDetail = result.plannedExamples.length
                     ? `可新增 ${result.plannedExamples.length} 句`
@@ -3865,7 +3887,7 @@
                     const chunk = insertRows.slice(index, index + chunkSize);
                     const { error } = await db
                         .from("vocabulary_examples")
-                        .upsert(chunk, { onConflict: "vocabulary_id,sentence", ignoreDuplicates: true });
+                        .upsert(chunk, { onConflict: "vocabulary_id,sentence", ignoreDuplicates: false });
                     if (error) throw error;
                 }
 
