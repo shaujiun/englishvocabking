@@ -1426,11 +1426,13 @@
             A: { questionCount: 20, targetScore: 80 },
             B: { questionCount: 10, targetScore: 80 }
         };
+        const FIRST_SEMESTER_FIRST_EXAM_ENDS_ON = "2026-09-18";
         let learningContext = {
             studentId: null,
             englishGroup: "B",
             focusTask: null,
             focusActivity: null,
+            focusScope: null,
             questionCount: 10,
             targetScore: 80,
             launchedFromTask: false,
@@ -1722,9 +1724,30 @@
             const taskId = params.get("focusTask") || "";
             const activity = params.get("focusActivity") || "";
             const remembered = getRememberedEnglishFocusTask();
+            const requestedBook = String(params.get("focusBook") || "").toUpperCase();
+            const requestedLessons = String(params.get("focusLessons") || "")
+                .split(",")
+                .map(value => value.trim().toUpperCase())
+                .filter(value => /^L[1-6]$/.test(value));
             return {
                 taskId: FOCUS_TASK_UUID_PATTERN.test(taskId) ? taskId : remembered?.taskId || null,
-                activity: FOCUS_ACTIVITY_CODES.has(activity) ? activity : remembered?.activity || null
+                activity: FOCUS_ACTIVITY_CODES.has(activity) ? activity : remembered?.activity || null,
+                focusScope: /^B[1-6]$/.test(requestedBook) && requestedLessons.length
+                    ? {
+                        book: requestedBook,
+                        lessons: [...new Set(requestedLessons)],
+                        label: params.get("focusScopeLabel") || `${requestedBook} 指定課別`
+                    }
+                    : null
+            };
+        }
+
+        function getEnglishFocusScopeForAssignedDate(assignedDate) {
+            const afterFirstExam = String(assignedDate || "") > FIRST_SEMESTER_FIRST_EXAM_ENDS_ON;
+            return {
+                book: "B3",
+                lessons: afterFirstExam ? ["L1", "L2", "L3", "L4"] : ["L1", "L2"],
+                label: afterFirstExam ? "B3 第 1～4 課" : "B3 第 1～2 課"
             };
         }
 
@@ -1735,6 +1758,7 @@
                 englishGroup: "B",
                 focusTask: null,
                 focusActivity: requested.activity,
+                focusScope: requested.focusScope,
                 questionCount: DEFAULT_GROUP_SETTINGS.B.questionCount,
                 targetScore: DEFAULT_GROUP_SETTINGS.B.targetScore,
                 launchedFromTask: false,
@@ -1777,7 +1801,7 @@
 
             const { data: task, error: taskError } = await db
                 .from("student_focus_tasks")
-                .select("id,subject_code_snapshot,activity_code_snapshot,group_code_snapshot,question_count,target_score,status")
+                .select("id,assigned_date,subject_code_snapshot,activity_code_snapshot,group_code_snapshot,question_count,target_score,status")
                 .eq("id", requested.taskId)
                 .maybeSingle();
 
@@ -1792,6 +1816,9 @@
 
             learningContext.focusTask = task;
             learningContext.focusActivity = taskActivity;
+            learningContext.focusScope = task.assigned_date
+                ? getEnglishFocusScopeForAssignedDate(task.assigned_date)
+                : requested.focusScope || getEnglishFocusScopeForAssignedDate();
             learningContext.englishGroup = normalizeEnglishGroup(task.group_code_snapshot);
             learningContext.questionCount = clampInteger(task.question_count, 1, 50, defaults.questionCount);
             learningContext.targetScore = clampInteger(task.target_score, 0, 100, defaults.targetScore);
@@ -1830,14 +1857,22 @@
 
         function launchRequestedFocusActivity() {
             if (!learningContext.launchedFromTask || !learningContext.focusActivity) return;
-            activeGameScope = {
-                book: currentUser?.levelBook || "B1",
-                type: currentUser?.levelLesson || "L1"
-            };
+            activeGameScope = learningContext.focusScope
+                ? {
+                    book: learningContext.focusScope.book,
+                    type: "focus-lessons",
+                    lessons: learningContext.focusScope.lessons,
+                    label: learningContext.focusScope.label
+                }
+                : {
+                    book: currentUser?.levelBook || "B1",
+                    type: currentUser?.levelLesson || "L1"
+                };
             activeGameScope.label = getGameScopeLabel(activeGameScope);
             const config = GAME_SCOPE_CONFIG[learningContext.focusActivity];
             if (config && getVocabularyForScope(activeGameScope).length < config.minimum) {
-                activeGameScope = { book: "B1", type: "all-review", label: "全部總複習" };
+                showToast("目前每日任務範圍的單字尚不足，請通知老師確認單字庫。", "info");
+                return;
             }
             document.querySelectorAll("[data-game-scope-label]").forEach(el => {
                 el.textContent = `${activeGameScope.label}・英語 ${learningContext.englishGroup} 組`;
@@ -4437,6 +4472,9 @@
         }
 
         function getGameScopeLabel(scope) {
+            if (scope.type === "focus-lessons" && Array.isArray(scope.lessons)) {
+                return scope.label || `${scope.book} 每日任務指定課別`;
+            }
             if (scope.type === "all-review") return "全部總複習";
             const bookLabel = `第${getBookNumber(scope.book)}冊`;
             if (scope.type === "book-review") return `${bookLabel}總複習`;
@@ -4447,6 +4485,12 @@
         }
 
         function getVocabularyForScope(scope = activeGameScope) {
+            if (scope.type === "focus-lessons" && Array.isArray(scope.lessons)) {
+                return vocabulary.filter(item => {
+                    return (item.book || "B1") === scope.book
+                        && scope.lessons.includes(item.lesson || "L1");
+                });
+            }
             if (scope.type === "all-review") return [...vocabulary];
             if (scope.type === "book-review") {
                 return vocabulary.filter(item => (item.book || "B1") === scope.book);
