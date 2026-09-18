@@ -1365,6 +1365,7 @@
         </footer>
     </div>
 
+    <script src="learning-entry.js"></script>
     <script>
         const SUPABASE_URL = "https://bipvbfpviogptejqqkdk.supabase.co";
         const SUPABASE_ANON_KEY = "sb_publishable_PB0Tu8BWbOmHm3sbMmSDjQ_IqZRY5ij";
@@ -2430,7 +2431,9 @@
             updateLearningContextBadge();
             await window.loadGrammarProgress?.();
             window.updateGrammarGroupDisplay?.();
-            switchTab('dashboard');
+            const requestedEntry = window.resolveLearningEntry(window.location.search, learningContext.launchedFromTask);
+            if (requestedEntry === 'grammar-map' && typeof window.openGrammarMap === 'function') window.openGrammarMap();
+            else switchTab('dashboard');
             showToast(`歡迎回來，${user.username}！`);
             if (learningContext.launchedFromTask) {
                 window.setTimeout(launchRequestedFocusActivity, 250);
