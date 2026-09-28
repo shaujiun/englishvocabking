@@ -19,7 +19,7 @@ function extractFunction(name) {
 
 const context = {};
 vm.runInNewContext([
-    extractFunction("getVocabKey"),
+    extractFunction("getMatchingWordKey"),
     extractFunction("isMatchingCardPair"),
 ].join("\n"), context);
 
@@ -51,14 +51,34 @@ assert.equal(
     "兩張英文卡不可互相配對",
 );
 assert.equal(
+    matches(
+        {
+            pairId: 0,
+            lang: "en",
+            item: { word: "spring", translation: "春天" },
+        },
+        {
+            pairId: 1,
+            lang: "zh",
+            item: { word: "spring", translation: "溫泉" },
+        },
+    ),
+    true,
+    "同一英文單字的不同中文義應可自由配對",
+);
+assert.equal(
     matches(cryEnglish, {
-        pairId: 0,
+        pairId: 1,
         lang: "zh",
-        item: { word: "Cry", translation: "哭泣" },
+        item: { word: "shout", translation: "叫喊" },
     }),
     false,
-    "英文相同但中文義不同時不可誤配",
+    "中文相同但來源英文不同時不可誤配",
 );
 assert.equal(matches(cryEnglish, null), false, "缺少卡片資料時不可配對");
 
-console.log(JSON.stringify({ checked: true, duplicateContentCanMatch: true }));
+console.log(JSON.stringify({
+    checked: true,
+    duplicateContentCanMatch: true,
+    multipleMeaningsCanMatch: true,
+}));

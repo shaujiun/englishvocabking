@@ -1481,12 +1481,16 @@
             return `${String(item.word || "").trim().toLowerCase()}::${String(item.translation || "").trim()}`;
         }
 
+        function getMatchingWordKey(card) {
+            return String(card?.item?.word || "").trim().toLowerCase();
+        }
+
         function isMatchingCardPair(firstCard, secondCard) {
-            const firstKey = getVocabKey(firstCard?.item);
-            const secondKey = getVocabKey(secondCard?.item);
+            const firstWord = getMatchingWordKey(firstCard);
+            const secondWord = getMatchingWordKey(secondCard);
             return Boolean(
-                firstKey
-                && firstKey === secondKey
+                firstWord
+                && firstWord === secondWord
                 && firstCard?.lang !== secondCard?.lang
             );
         }
