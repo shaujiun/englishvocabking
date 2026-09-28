@@ -1481,6 +1481,16 @@
             return `${String(item.word || "").trim().toLowerCase()}::${String(item.translation || "").trim()}`;
         }
 
+        function isMatchingCardPair(firstCard, secondCard) {
+            const firstKey = getVocabKey(firstCard?.item);
+            const secondKey = getVocabKey(secondCard?.item);
+            return Boolean(
+                firstKey
+                && firstKey === secondKey
+                && firstCard?.lang !== secondCard?.lang
+            );
+        }
+
         function getProgressForItem(progress, item) {
             return progress[getVocabKey(item)] || progress[item.word] || { correctCount: 0, totalTested: 0, correctAnswers: 0 };
         }
@@ -5424,7 +5434,7 @@
                 const first = matchingGameData.selectedCard;
                 const second = { element: cardElement, data: cardData };
 
-                if (first.data.pairId === second.data.pairId && first.data.lang !== second.data.lang) {
+                if (isMatchingCardPair(first.data, second.data)) {
                     matchingGameData.busy = true;
                     setTimeout(() => {
                         const inner1 = first.element.querySelector('.card-inner');
