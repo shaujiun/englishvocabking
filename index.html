@@ -5935,6 +5935,69 @@
             return data;
         }
 
+        const VOCAB_ACTIVITY_NAMES = {
+            listening: "英語聽力選字",
+            spelling: "英語拼字挑戰",
+            sentence: "英語情境句子",
+            matching: "英語翻牌連連看",
+            pronunciation: "英語口說發音"
+        };
+
+        window.recordUnifiedLearningAttempt = async function ({
+            activityCode,
+            activityName,
+            modeCode = "default",
+            source = "free_practice",
+            score = null,
+            correctCount = null,
+            questionCount = null,
+            metadata = {}
+        }) {
+            if (!db || currentUser?.role !== "student") return null;
+            const randomId = window.crypto?.randomUUID?.()
+                || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+            const { data, error } = await db.rpc("record_learning_activity_attempt", {
+                p_subject_code: "english",
+                p_activity_code: String(activityCode || "english_practice").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").slice(0, 64),
+                p_activity_name: String(activityName || "英語練習").slice(0, 120),
+                p_mode_code: String(modeCode || "default").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").slice(0, 80),
+                p_source: source,
+                p_score: score,
+                p_correct_count: correctCount,
+                p_question_count: questionCount,
+                p_completed: true,
+                p_duration_seconds: null,
+                p_attempt_key: `${activityCode || "english"}:${randomId}`.slice(0, 160),
+                p_metadata: metadata
+            });
+            if (error) {
+                console.warn("Unified learning progress is temporarily unavailable; the original English progress remains saved.", error);
+                return null;
+            }
+            return data;
+        };
+
+        function recordVocabularyGameAttempt(gameType, points, totalItems, wrongItems) {
+            if (!gameType || !VOCAB_ACTIVITY_NAMES[gameType] || totalItems <= 0) return;
+            const correctCount = Math.min(totalItems, Math.max(0, Math.round(points / 10)));
+            const score = Math.round((correctCount / totalItems) * 100);
+            const isDailyTask = Boolean(
+                learningContext.launchedFromTask
+                && learningContext.focusActivity === gameType
+                && learningContext.focusTask?.id
+            );
+            window.recordUnifiedLearningAttempt({
+                activityCode: `english_vocab_${gameType}`,
+                activityName: VOCAB_ACTIVITY_NAMES[gameType],
+                modeCode: `group_${String(learningContext.englishGroup || "B").toLowerCase()}`,
+                source: isDailyTask ? "daily_task" : "free_practice",
+                score,
+                correctCount,
+                questionCount: totalItems,
+                metadata: { wrongCount: getUniqueRetryItems(wrongItems).length }
+            });
+        }
+
         function showGameOverModal(points, totalItems, title = "恭喜完成！", gameType = null, wrongItems = []) {
             const modal = document.getElementById('game-over-modal');
             const scoreSpan = document.getElementById('modal-score');
@@ -5945,6 +6008,7 @@
             const autoNote = document.getElementById('game-over-auto-note');
             const displayId = ++gameOverDisplayId;
             const retryItems = getUniqueRetryItems(wrongItems);
+            recordVocabularyGameAttempt(gameType, points, totalItems, wrongItems);
 
             if (gameOverReturnTimer) {
                 clearTimeout(gameOverReturnTimer);

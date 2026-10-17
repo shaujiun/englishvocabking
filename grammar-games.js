@@ -1153,6 +1153,15 @@
         const score = Math.round((grammarSession.firstTryCorrect / total) * 100);
         const passed = score >= PASS_SCORE;
         await saveGrammarStageProgress(grammarSession.stage.id, score, grammarSession.bookCode, grammarSession.lessonCode);
+        window.recordUnifiedLearningAttempt?.({
+            activityCode: "english_grammar",
+            activityName: "英語文法引導練習",
+            modeCode: `${grammarSession.bookCode}_${grammarSession.lessonCode}_${grammarSession.stage.id}`,
+            score,
+            correctCount: grammarSession.firstTryCorrect,
+            questionCount: total,
+            metadata: { group: getGrammarGroup(), passed }
+        });
 
         document.getElementById("grammar-question-progress").textContent = `${total}／${total}`;
         document.getElementById("grammar-progress-bar").style.width = "100%";
