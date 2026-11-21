@@ -935,6 +935,8 @@
             attemptsOnQuestion: 0,
             lastResponse: "",
             selectedTokens: [],
+            attemptKey: `english_grammar:${window.createLearningAttemptId?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`,
+            startedAt: Date.now(),
             finished: false
         };
 
@@ -1147,12 +1149,29 @@
     }
 
     async function finishGrammarRound() {
-        if (!grammarSession) return;
+        if (!grammarSession || grammarSession.finished) return;
         grammarSession.finished = true;
         const total = grammarSession.questions.length;
         const score = Math.round((grammarSession.firstTryCorrect / total) * 100);
         const passed = score >= PASS_SCORE;
         await saveGrammarStageProgress(grammarSession.stage.id, score, grammarSession.bookCode, grammarSession.lessonCode);
+        window.recordUnifiedLearningAttempt?.({
+            activityCode: "english_grammar",
+            activityName: "英語文法引導練習",
+            modeCode: `${grammarSession.bookCode}_${grammarSession.lessonCode}_${grammarSession.stage.id}`,
+            score,
+            correctCount: grammarSession.firstTryCorrect,
+            questionCount: total,
+            durationSeconds: Math.max(0, Math.round((Date.now() - grammarSession.startedAt) / 1000)),
+            attemptKey: grammarSession.attemptKey,
+            metadata: {
+                group: grammarSession.group,
+                book: grammarSession.bookCode,
+                lesson: grammarSession.lessonCode,
+                stage: grammarSession.stage.id,
+                passed
+            }
+        });
 
         document.getElementById("grammar-question-progress").textContent = `${total}／${total}`;
         document.getElementById("grammar-progress-bar").style.width = "100%";
