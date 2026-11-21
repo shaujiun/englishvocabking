@@ -1439,6 +1439,7 @@
             launchedFromTask: false,
             attemptReported: false
         };
+        let activeGameAttempt = null;
         
         // 個人答對率與熟記進度儲存
         // 格式：{ [username]: { [word]: { correctCount: 0, totalTested: 0, correctAnswers: 0 } } }
@@ -1849,6 +1850,12 @@
         }
 
         function beginGameAttempt(gameType) {
+            activeGameAttempt = {
+                gameType,
+                attemptKey: `english_vocab_${gameType}:${createLearningAttemptId()}`,
+                startedAt: Date.now(),
+                reported: false
+            };
             if (learningContext.launchedFromTask && learningContext.focusActivity === gameType) {
                 learningContext.attemptReported = false;
             }
@@ -5943,6 +5950,33 @@
             pronunciation: "英語口說發音"
         };
 
+        function createLearningAttemptId() {
+            return window.crypto?.randomUUID?.()
+                || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        }
+
+        window.createLearningAttemptId = createLearningAttemptId;
+
+        function getActiveGameScopeSnapshot() {
+            const group = String(learningContext.englishGroup || "B").toUpperCase() === "A" ? "A" : "B";
+            const book = String(activeGameScope?.book || currentUser?.levelBook || "B1").toUpperCase();
+            const scopeType = String(activeGameScope?.type || currentUser?.levelLesson || "L1").toLowerCase();
+            const lessons = Array.isArray(activeGameScope?.lessons)
+                ? activeGameScope.lessons.map(value => String(value).toUpperCase())
+                : [];
+            const scopeCode = scopeType === "focus-lessons" && lessons.length
+                ? `${book}_${lessons.join("_")}`
+                : `${book}_${scopeType}`;
+            return {
+                group,
+                book,
+                scopeType,
+                lessons,
+                label: activeGameScope?.label || getGameScopeLabel(activeGameScope),
+                modeCode: `group_${group.toLowerCase()}_${scopeCode.toLowerCase()}`
+            };
+        }
+
         window.recordUnifiedLearningAttempt = async function ({
             activityCode,
             activityName,
@@ -5951,11 +5985,13 @@
             score = null,
             correctCount = null,
             questionCount = null,
+            completed = true,
+            durationSeconds = null,
+            attemptKey = null,
             metadata = {}
         }) {
             if (!db || currentUser?.role !== "student") return null;
-            const randomId = window.crypto?.randomUUID?.()
-                || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+            const resolvedAttemptKey = attemptKey || `${activityCode || "english"}:${createLearningAttemptId()}`;
             const { data, error } = await db.rpc("record_learning_activity_attempt", {
                 p_subject_code: "english",
                 p_activity_code: String(activityCode || "english_practice").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").slice(0, 64),
@@ -5965,9 +6001,9 @@
                 p_score: score,
                 p_correct_count: correctCount,
                 p_question_count: questionCount,
-                p_completed: true,
-                p_duration_seconds: null,
-                p_attempt_key: `${activityCode || "english"}:${randomId}`.slice(0, 160),
+                p_completed: completed,
+                p_duration_seconds: durationSeconds,
+                p_attempt_key: String(resolvedAttemptKey).slice(0, 160),
                 p_metadata: metadata
             });
             if (error) {
@@ -5979,8 +6015,20 @@
 
         function recordVocabularyGameAttempt(gameType, points, totalItems, wrongItems) {
             if (!gameType || !VOCAB_ACTIVITY_NAMES[gameType] || totalItems <= 0) return;
+            const attempt = activeGameAttempt?.gameType === gameType
+                ? activeGameAttempt
+                : {
+                    gameType,
+                    attemptKey: `english_vocab_${gameType}:${createLearningAttemptId()}`,
+                    startedAt: Date.now(),
+                    reported: false
+                };
+            if (attempt.reported) return;
+            attempt.reported = true;
+            activeGameAttempt = attempt;
             const correctCount = Math.min(totalItems, Math.max(0, Math.round(points / 10)));
             const score = Math.round((correctCount / totalItems) * 100);
+            const scope = getActiveGameScopeSnapshot();
             const isDailyTask = Boolean(
                 learningContext.launchedFromTask
                 && learningContext.focusActivity === gameType
@@ -5989,12 +6037,22 @@
             window.recordUnifiedLearningAttempt({
                 activityCode: `english_vocab_${gameType}`,
                 activityName: VOCAB_ACTIVITY_NAMES[gameType],
-                modeCode: `group_${String(learningContext.englishGroup || "B").toLowerCase()}`,
+                modeCode: scope.modeCode,
                 source: isDailyTask ? "daily_task" : "free_practice",
                 score,
                 correctCount,
                 questionCount: totalItems,
-                metadata: { wrongCount: getUniqueRetryItems(wrongItems).length }
+                durationSeconds: Math.max(0, Math.round((Date.now() - attempt.startedAt) / 1000)),
+                attemptKey: attempt.attemptKey,
+                metadata: {
+                    group: scope.group,
+                    book: scope.book,
+                    scopeType: scope.scopeType,
+                    lessons: scope.lessons,
+                    scopeLabel: scope.label,
+                    wrongCount: getUniqueRetryItems(wrongItems).length,
+                    ...(gameType === "matching" ? { clickCount: matchingGameData.clicks } : {})
+                }
             });
         }
 

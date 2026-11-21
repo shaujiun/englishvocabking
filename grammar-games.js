@@ -935,6 +935,8 @@
             attemptsOnQuestion: 0,
             lastResponse: "",
             selectedTokens: [],
+            attemptKey: `english_grammar:${window.createLearningAttemptId?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`,
+            startedAt: Date.now(),
             finished: false
         };
 
@@ -1147,7 +1149,7 @@
     }
 
     async function finishGrammarRound() {
-        if (!grammarSession) return;
+        if (!grammarSession || grammarSession.finished) return;
         grammarSession.finished = true;
         const total = grammarSession.questions.length;
         const score = Math.round((grammarSession.firstTryCorrect / total) * 100);
@@ -1160,7 +1162,15 @@
             score,
             correctCount: grammarSession.firstTryCorrect,
             questionCount: total,
-            metadata: { group: getGrammarGroup(), passed }
+            durationSeconds: Math.max(0, Math.round((Date.now() - grammarSession.startedAt) / 1000)),
+            attemptKey: grammarSession.attemptKey,
+            metadata: {
+                group: grammarSession.group,
+                book: grammarSession.bookCode,
+                lesson: grammarSession.lessonCode,
+                stage: grammarSession.stage.id,
+                passed
+            }
         });
 
         document.getElementById("grammar-question-progress").textContent = `${total}／${total}`;
